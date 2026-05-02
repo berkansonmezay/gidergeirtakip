@@ -13,6 +13,7 @@ import reportRoutes from './routes/reports.js';
 import savingsRoutes from './routes/savings.js';
 import familyRoutes from './routes/family.js';
 import payeeRoutes from './routes/payees.js';
+import notificationRoutes from './routes/notifications.js';
 
 dotenv.config();
 
@@ -39,6 +40,7 @@ app.use('/api/reports', reportRoutes);
 app.use('/api/savings', savingsRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/payees', payeeRoutes);
+app.use('/api/notifications', notificationRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

@@ -1,12 +1,21 @@
 import { Menu, Sun, Moon, Plus, Bell, User } from 'lucide-react';
 import useThemeStore from '../../store/themeStore';
 import useAuthStore from '../../store/authStore';
-import { useState } from 'react';
+import useNotificationStore from '../../store/notificationStore';
+import { useState, useEffect } from 'react';
 
 export default function Header({ onMenuClick, onQuickAdd }) {
   const { theme, toggleTheme } = useThemeStore();
   const { user } = useAuthStore();
+  const { notifications, unreadCount, fetchNotifications, markAsRead, markAllAsRead, deleteNotification } = useNotificationStore();
   const [showProfile, setShowProfile] = useState(false);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  useEffect(() => {
+    if (user) {
+      fetchNotifications();
+    }
+  }, [user]);
 
   return (
     <header
@@ -46,10 +55,69 @@ export default function Header({ onMenuClick, onQuickAdd }) {
         </button>
 
         {/* Notifications */}
-        <button className="btn-icon btn-ghost relative" title="Bildirimler">
-          <Bell size={20} />
-          <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
-        </button>
+        <div className="relative">
+          <button 
+            className="btn-icon btn-ghost relative" 
+            title="Bildirimler"
+            onClick={() => setShowNotifications(!showNotifications)}
+          >
+            <Bell size={20} />
+            {unreadCount > 0 && (
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </button>
+          
+          {showNotifications && (
+            <div 
+              className="absolute right-0 mt-2 w-80 card shadow-xl animate-scale-in"
+              style={{ maxHeight: '400px', display: 'flex', flexDirection: 'column' }}
+              onMouseLeave={() => setShowNotifications(false)}
+            >
+              <div className="p-3 border-b flex items-center justify-between" style={{ borderColor: 'var(--border)' }}>
+                <h3 className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Bildirimler</h3>
+                {unreadCount > 0 && (
+                  <button 
+                    onClick={markAllAsRead}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Tümünü Okundu İşaretle
+                  </button>
+                )}
+              </div>
+              <div className="overflow-y-auto" style={{ maxHeight: '350px' }}>
+                {notifications.length === 0 ? (
+                  <div className="p-4 text-center text-sm" style={{ color: 'var(--text-muted)' }}>
+                    Yeni bildiriminiz yok.
+                  </div>
+                ) : (
+                  notifications.map(notif => (
+                    <div 
+                      key={notif.id} 
+                      className={`p-3 border-b text-sm transition-colors cursor-pointer flex justify-between items-start ${notif.is_read ? '' : 'bg-[var(--bg-secondary)]'}`}
+                      style={{ borderColor: 'var(--border)' }}
+                      onClick={() => !notif.is_read && markAsRead(notif.id)}
+                    >
+                      <div>
+                        <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{notif.title}</p>
+                        <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>{notif.message}</p>
+                        <p className="text-[10px] mt-2" style={{ color: 'var(--text-muted)' }}>
+                          {new Date(notif.created_at).toLocaleString('tr-TR')}
+                        </p>
+                      </div>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); deleteNotification(notif.id); }}
+                        className="text-gray-400 hover:text-red-500 ml-2 mt-1"
+                        title="Sil"
+                      >
+                        <X size={14} />
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          )}
+        </div>
 
         {/* Profile */}
         <div className="relative">

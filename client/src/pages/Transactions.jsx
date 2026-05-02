@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Download, FileText, FileSpreadsheet } from 'lucide-react';
 import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+import autoTable from 'jspdf-autotable';
+import { utils } from 'xlsx';
 import api from '../services/api';
+import { robotoBase64 } from '../utils/fonts/Roboto.js';
 
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 
@@ -147,60 +148,79 @@ export default function Transactions() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-  const exportToExcel = () => {
-    if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
-    
-    const data = filtered.map(tx => ({
-      'Tarih': new Date(tx.date).toLocaleDateString('tr-TR'),
-      'Ödeme Yeri': tx.payee_name || '-',
-      'Kategori': tx.category_name || '-',
-      'Açıklama': tx.description || '-',
-      'Gelir (₺)': tx.type === 'income' ? tx.amount : 0,
-      'Gider (₺)': tx.type === 'expense' ? tx.amount : 0
-    }));
+  const exportToExcel = async () => {
+    try {
+      if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
+      
+      const data = filtered.map(tx => ({
+        'Tarih': new Date(tx.date).toLocaleDateString('tr-TR'),
+        'Ödeme Yeri': tx.payee_name || '-',
+        'Kategori': tx.category_name || '-',
+        'Açıklama': tx.description || '-',
+        'Gelir (₺)': tx.type === 'income' ? tx.amount : 0,
+        'Gider (₺)': tx.type === 'expense' ? tx.amount : 0
+      }));
 
-    const ws = XLSX.utils.json_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "İşlemler");
-    XLSX.writeFile(wb, `Islemler_${new Date().toISOString().split('T')[0]}.xlsx`);
+      const ws = utils.json_to_sheet(data);
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, "İşlemler");
+      
+      const { write } = await import('xlsx');
+      const b64 = write(wb, { bookType: 'xlsx', type: 'base64' });
+      const link = document.createElement('a');
+      link.href = 'data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,' + b64;
+      link.download = `Islemler_${new Date().toISOString().split('T')[0]}.xlsx`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Excel Export Error:', err);
+      alert('Excel dışa aktarılırken bir hata oluştu: ' + err.message);
+    }
   };
 
   const exportToPDF = () => {
-    if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
+    try {
+      if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
 
-    const doc = new jsPDF();
-    doc.text('Islemler Raporu', 14, 15);
+      const doc = new jsPDF();
+      
+      // Add custom font for Turkish characters
+      doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.setFont('Roboto');
 
-    const safeText = (text) => {
-      if (!text) return '-';
-      return text.toString()
-        .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
-        .replace(/ü/g, 'u').replace(/Ü/g, 'U')
-        .replace(/ş/g, 's').replace(/Ş/g, 'S')
-        .replace(/ı/g, 'i').replace(/İ/g, 'I')
-        .replace(/ö/g, 'o').replace(/Ö/g, 'O')
-        .replace(/ç/g, 'c').replace(/Ç/g, 'C');
-    };
-    
-    const tableData = filtered.map(tx => [
-      new Date(tx.date).toLocaleDateString('tr-TR'),
-      safeText(tx.payee_name),
-      safeText(tx.category_name),
-      safeText(tx.description),
-      tx.type === 'income' ? formatMoney(tx.amount) : '-',
-      tx.type === 'expense' ? formatMoney(tx.amount) : '-'
-    ]);
+      doc.text('İşlemler Raporu', 14, 15);
+      
+      const tableData = filtered.map(tx => [
+        new Date(tx.date).toLocaleDateString('tr-TR'),
+        tx.payee_name || '-',
+        tx.category_name || '-',
+        tx.description || '-',
+        tx.type === 'income' ? formatMoney(tx.amount) : '-',
+        tx.type === 'expense' ? formatMoney(tx.amount) : '-'
+      ]);
 
-    doc.autoTable({
-      head: [['Tarih', 'Odeme Yeri', 'Kategori', 'Aciklama', 'Gelir', 'Gider']],
-      body: tableData,
-      startY: 20,
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [99, 102, 241] },
-      columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' } }
-    });
+      autoTable(doc, {
+        head: [['Tarih', 'Ödeme Yeri', 'Kategori', 'Açıklama', 'Gelir', 'Gider']],
+        body: tableData,
+        startY: 20,
+        styles: { font: 'Roboto', fontSize: 9 },
+        headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+        columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' } }
+      });
 
-    doc.save(`Islemler_${new Date().toISOString().split('T')[0]}.pdf`);
+      const b64 = doc.output('datauristring');
+      const link = document.createElement('a');
+      link.href = b64;
+      link.download = `Islemler_${new Date().toISOString().split('T')[0]}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('PDF Export Error:', err);
+      alert('PDF dışa aktarılırken bir hata oluştu: ' + err.message);
+    }
   };
 
   useEffect(() => { setCurrentPage(1); }, [filter.search, filter.type, filter.category_id, filter.payee_id, filter.start_date, filter.end_date]);

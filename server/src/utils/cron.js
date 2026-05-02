@@ -31,6 +31,7 @@ export const initializeCronJobs = () => {
           p.amount,
           p.due_date,
           i.description as installment_desc,
+          u.id as user_id,
           u.name as user_name,
           u.email as user_email
         FROM installment_payments p
@@ -49,6 +50,15 @@ export const initializeCronJobs = () => {
       console.log(`ℹ️ [Cron] Yarın için ${paymentsDueTomorrow.length} adet taksit ödemesi bulundu. Hatırlatıcılar gönderiliyor...`);
 
       for (const payment of paymentsDueTomorrow) {
+        // Prepare notification data
+        const title = 'Taksit Ödeme Hatırlatması';
+        const message = `Yarın (${tomorrowStr}) "${payment.installment_desc}" için ${payment.amount} ₺ ödemeniz bulunmaktadır.`;
+
+        // Insert notification into database
+        db.prepare('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)').run(
+          payment.user_id, 'installment_reminder', title, message
+        );
+
         if (payment.user_email) {
           await sendInstallmentReminderEmail(
             payment.user_email,
@@ -58,7 +68,7 @@ export const initializeCronJobs = () => {
             payment.due_date
           );
         } else {
-          console.warn(`[Cron] Uyarı: Kullanıcı '${payment.user_name}' için e-posta adresi bulunamadı.`);
+          console.warn(`[Cron] Uyarı: Kullanıcı '${payment.user_name}' için e-posta adresi bulunamadı. (Bildirim eklendi)`);
         }
       }
 
