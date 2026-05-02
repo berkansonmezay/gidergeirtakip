@@ -81,10 +81,13 @@ export function initializeDatabase() {
       start_date DATE NOT NULL,
       next_payment_date DATE NOT NULL,
       category_id INTEGER,
+      payee_id INTEGER,
       user_id INTEGER NOT NULL,
+      type TEXT DEFAULT 'expense' CHECK(type IN ('income', 'expense')),
       status TEXT DEFAULT 'active' CHECK(status IN ('active', 'completed', 'cancelled')),
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (category_id) REFERENCES categories(id),
+      FOREIGN KEY (payee_id) REFERENCES payees(id) ON DELETE SET NULL,
       FOREIGN KEY (user_id) REFERENCES users(id)
     );
 
@@ -120,6 +123,24 @@ export function initializeDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
   `);
+  
+  // Migration for existing installations
+  try {
+    const columns = db.prepare("PRAGMA table_info(installments)").all();
+    const hasType = columns.some(c => c.name === 'type');
+    const hasPayee = columns.some(c => c.name === 'payee_id');
+    
+    if (!hasType) {
+      db.exec("ALTER TABLE installments ADD COLUMN type TEXT DEFAULT 'expense' CHECK(type IN ('income', 'expense'))");
+      console.log('📦 Taksitler tablosuna \'type\' sütunu eklendi.');
+    }
+    if (!hasPayee) {
+      db.exec("ALTER TABLE installments ADD COLUMN payee_id INTEGER REFERENCES payees(id) ON DELETE SET NULL");
+      console.log('📦 Taksitler tablosuna \'payee_id\' sütunu eklendi.');
+    }
+  } catch (err) {
+    console.error('Migration error:', err);
+  }
 
   // Seed default categories if none exist
   const categoryCount = db.prepare('SELECT COUNT(*) as count FROM categories WHERE is_default = 1').get();

@@ -40,7 +40,8 @@ export default function App() {
           <Route index element={<Dashboard />} />
           <Route path="transactions" element={<Transactions />} />
           <Route path="categories" element={<Categories />} />
-          <Route path="installments" element={<Installments />} />
+          <Route path="installments" element={<Navigate to="expense" replace />} />
+          <Route path="installments/:type" element={<Installments />} />
           <Route path="reports" element={<Reports />} />
           <Route path="savings" element={<Savings />} />
           <Route path="payees" element={<Payees />} />

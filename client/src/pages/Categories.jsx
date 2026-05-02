@@ -5,7 +5,11 @@ import api from '../services/api';
 
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 
-const EMOJI_OPTIONS = ['🛒','🚗','💡','🏠','🏥','📚','👕','🎬','🍽️','📦','💰','💵','📈','🏢','🎁','✈️','🎮','🐾','💊','🏋️','📱','🎓','🔧','☕'];
+const EMOJI_OPTIONS = [
+  '🛒','🚗','💡','🏠','🏥','📚','👕','🎬','🍽️','📦','💰','💵','📈','🏢','🎁','✈️','🎮','🐾','💊','🏋️','📱','🎓','🔧','☕',
+  '🍦','🍔','🍕','🍺','🥤','🛍️','💎','💄','👠','🚲','🚇','🚕','🛋️','🧼','🚿','🛠️','🦷','👓','💆','🎨','🎭','🎡','⚽','🏀',
+  '🎾','🏐','🏊','💹','🏦','💳','💸','🔨','🪚','🪜','🌈','🌙','☀️','☁️','⚡','🔥','💦','🔋','🔌','💻','⌨️','🖱️','📷','🎥'
+];
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -13,6 +17,7 @@ export default function Categories() {
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [typeFilter, setTypeFilter] = useState('');
+  const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const fetchCategories = async () => {
     try {
@@ -24,9 +29,13 @@ export default function Categories() {
 
   useEffect(() => { fetchCategories(); }, []);
 
-  const handleDelete = async (id) => {
-    if (!confirm('Bu kategoriyi silmek istediğinize emin misiniz?')) return;
-    try { await api.delete(`/categories/${id}`); fetchCategories(); } catch {}
+  const executeDelete = async () => {
+    if (!deleteConfirmId) return;
+    try {
+      await api.delete(`/categories/${deleteConfirmId}`);
+      setDeleteConfirmId(null);
+      fetchCategories();
+    } catch {}
   };
 
   const filtered = categories.filter(c => !typeFilter || c.type === typeFilter);
@@ -70,22 +79,38 @@ export default function Categories() {
                 </div>
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                   <button onClick={() => { setEditItem(cat); setShowForm(true); }} className="btn-icon btn-ghost btn-sm"><Edit3 size={14} /></button>
-                  <button onClick={() => handleDelete(cat.id)} className="btn-icon btn-ghost btn-sm hover:!text-red-500"><Trash2 size={14} /></button>
+                  <button onClick={() => setDeleteConfirmId(cat.id)} className="btn-icon btn-ghost btn-sm hover:!text-red-500"><Trash2 size={14} /></button>
                 </div>
               </div>
             </div>
           ))}
 
-          {/* Add new card */}
-          <button onClick={() => { setEditItem(null); setShowForm(true); }} className="card p-4 flex flex-col items-center justify-center gap-2 min-h-[100px] border-dashed cursor-pointer hover:border-[var(--primary)] transition-colors" style={{ borderStyle: 'dashed' }}>
-            <Plus size={24} style={{ color: 'var(--text-muted)' }} />
-            <span className="text-sm" style={{ color: 'var(--text-muted)' }}>Yeni Kategori</span>
-          </button>
+          {/* Add new card removed as requested */}
         </div>
       )}
 
       {showForm && (
         <CategoryFormModal editItem={editItem} onClose={() => { setShowForm(false); setEditItem(null); }} onSaved={() => { setShowForm(false); setEditItem(null); fetchCategories(); }} />
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmId && createPortal(
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDeleteConfirmId(null)}>
+          <div className="modal-content p-6" style={{ maxWidth: '400px' }}>
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 rounded-full mx-auto flex items-center justify-center mb-4" style={{ background: 'var(--expense-light)', color: 'var(--expense)' }}>
+                <Trash2 size={32} />
+              </div>
+              <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Kategoriyi Sil</h3>
+              <p className="text-sm mt-2" style={{ color: 'var(--text-secondary)' }}>Bu kategoriyi silmek istediğinize emin misiniz? Bu işlem geri alınamaz.</p>
+            </div>
+            <div className="flex gap-3">
+              <button type="button" onClick={() => setDeleteConfirmId(null)} className="btn btn-secondary flex-1">İptal</button>
+              <button type="button" onClick={executeDelete} className="btn btn-danger flex-1">Evet, Sil</button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );

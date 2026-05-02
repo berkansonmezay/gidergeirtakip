@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Outlet } from 'react-router-dom';
 import Sidebar from './Sidebar';
 import Header from './Header';
@@ -7,6 +7,16 @@ import QuickAddModal from '../forms/QuickAddModal';
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [initialType, setInitialType] = useState('expense');
+  
+  useEffect(() => {
+    const handleOpen = (e) => {
+      if (e.detail?.type) setInitialType(e.detail.type);
+      setQuickAddOpen(true);
+    };
+    window.addEventListener('open-quick-add', handleOpen);
+    return () => window.removeEventListener('open-quick-add', handleOpen);
+  }, []);
 
   return (
     <div className="flex h-full">
@@ -22,7 +32,7 @@ export default function Layout() {
         </main>
       </div>
 
-      {quickAddOpen && <QuickAddModal onClose={() => setQuickAddOpen(false)} />}
+      {quickAddOpen && <QuickAddModal onClose={() => setQuickAddOpen(false)} initialType={initialType} />}
     </div>
   );
 }

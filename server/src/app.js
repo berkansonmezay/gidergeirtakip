@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { initializeDatabase } from './config/database.js';
+import { initializeCronJobs } from './utils/cron.js';
 import { apiLimiter } from './middleware/rateLimit.js';
 import authRoutes from './routes/auth.js';
 import transactionRoutes from './routes/transactions.js';
@@ -45,8 +46,9 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Sunucu hatası oluştu.' });
 });
 
-// Initialize DB and start
+// Initialize DB, Cron jobs and start
 initializeDatabase();
+initializeCronJobs();
 app.listen(PORT, () => {
   console.log(`\n🏠 Aile Bütçesi API - Port ${PORT}`);
   console.log(`📡 http://localhost:${PORT}/api/health\n`);

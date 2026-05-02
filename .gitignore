@@ -7,3 +7,5 @@ build/
 *.db
 *.db-shm
 *.db-wal
+server/data/
+*.sqlite

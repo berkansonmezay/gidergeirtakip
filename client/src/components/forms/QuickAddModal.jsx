@@ -14,6 +14,9 @@ export default function QuickAddModal({ onClose, initialType }) {
   const [payeeId, setPayeeId] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentCount, setInstallmentCount] = useState('12');
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
     setCategoryId('');
@@ -27,9 +30,22 @@ export default function QuickAddModal({ onClose, initialType }) {
     setLoading(true);
     setError('');
     try {
-      await api.post('/transactions', { amount: parseFloat(amount), description, date, type, category_id: categoryId || null, payee_id: payeeId || null });
+      if (isInstallment) {
+        await api.post('/installments', {
+          description,
+          total_amount: parseFloat(amount),
+          installment_count: parseInt(installmentCount),
+          start_date: startDate,
+          category_id: categoryId || null,
+          payee_id: payeeId || null,
+          type
+        });
+      } else {
+        await api.post('/transactions', { amount: parseFloat(amount), description, date, type, category_id: categoryId || null, payee_id: payeeId || null });
+      }
       onClose();
       window.dispatchEvent(new Event('transaction-added'));
+      if (isInstallment) window.dispatchEvent(new Event('installment-added'));
     } catch (err) {
       setError(err.response?.data?.error || 'Hata oluştu.');
     }
@@ -105,6 +121,58 @@ export default function QuickAddModal({ onClose, initialType }) {
           <div>
             <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Açıklama</label>
             <input className="input" placeholder="İşlem açıklaması..." value={description} onChange={(e) => setDescription(e.target.value)} />
+          </div>
+
+          {/* Installment Toggle */}
+          <div className="p-4 rounded-2xl border transition-all" style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <div className={`p-2 rounded-lg ${isInstallment ? 'bg-primary/10 text-primary' : 'bg-gray-100 text-gray-400'}`}>
+                  <TrendingUp size={16} className={isInstallment ? 'rotate-45' : ''} style={{ transition: 'transform 0.3s' }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Taksitli İşlem</p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Bu işlemi taksitlere böl</p>
+                </div>
+              </div>
+              <label className="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" className="sr-only peer" checked={isInstallment} onChange={(e) => setIsInstallment(e.target.checked)} />
+                <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-primary"></div>
+              </label>
+            </div>
+
+            {isInstallment && (
+              <div className="pt-3 border-t mt-3 animate-slide-down" style={{ borderColor: 'var(--border)' }}>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Taksit Sayısı</label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="60"
+                      className="input !py-2"
+                      value={installmentCount}
+                      onChange={(e) => setInstallmentCount(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>İlk Taksit</label>
+                    <input
+                      type="date"
+                      className="input !py-2 !text-[11px]"
+                      value={startDate}
+                      onChange={(e) => setStartDate(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Taksit Tutarı</label>
+                    <div className="h-10 flex items-center px-2 rounded-xl font-bold text-[13px]" style={{ background: 'var(--bg-primary)', color: 'var(--primary)' }}>
+                      ₺{amount && installmentCount ? (parseFloat(amount) / parseInt(installmentCount)).toFixed(2) : '0.00'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <button

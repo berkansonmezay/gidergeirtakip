@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
+import * as XLSX from 'xlsx';
 import api from '../services/api';
 
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
@@ -9,12 +12,78 @@ export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [payees, setPayees] = useState([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 10;
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState({ type: '', category_id: '', payee_id: '', search: '' });
+  const [filter, setFilter] = useState({ type: '', category_id: '', payee_id: '', search: '', start_date: '', end_date: '' });
+  const [showFilters, setShowFilters] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [activeDateRange, setActiveDateRange] = useState('');
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [total, setTotal] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+
+  const handleDateRangeClick = (rangeStr) => {
+    setActiveDateRange(rangeStr);
+    const now = new Date();
+    let start = new Date();
+    let end = new Date();
+
+    switch (rangeStr) {
+      case 'Gecmis':
+        start = new Date(0);
+        end = new Date(now.setDate(now.getDate() - 1));
+        break;
+      case 'Gecen Ay':
+        start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case 'Gecen 3 Ay':
+        start = new Date(now.getFullYear(), now.getMonth() - 3, 1);
+        end = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case 'Gecen Ceyrek':
+        const prevQuarter = Math.floor(now.getMonth() / 3) - 1;
+        start = new Date(now.getFullYear(), prevQuarter * 3, 1);
+        end = new Date(now.getFullYear(), (prevQuarter + 1) * 3, 0);
+        break;
+      case 'Bugun':
+        break;
+      case 'Bu Hafta':
+        const day = now.getDay();
+        const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+        start = new Date(now.setDate(diff));
+        end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        break;
+      case 'Bu Ay':
+        start = new Date(now.getFullYear(), now.getMonth(), 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        break;
+      case 'Bu Ceyrek':
+        const currQuarter = Math.floor(now.getMonth() / 3);
+        start = new Date(now.getFullYear(), currQuarter * 3, 1);
+        end = new Date(now.getFullYear(), (currQuarter + 1) * 3, 0);
+        break;
+      case '15 Gun':
+        start = new Date(now.setDate(now.getDate() - 15));
+        end = new Date();
+        break;
+      case 'Gelecek 3 Ay':
+        start = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+        end = new Date(now.getFullYear(), now.getMonth() + 4, 0);
+        break;
+      default:
+        start = ''; end = '';
+    }
+
+    setFilter(f => ({ 
+      ...f, 
+      start_date: start ? start.toISOString().split('T')[0] : '', 
+      end_date: end ? end.toISOString().split('T')[0] : '' 
+    }));
+  };
 
   const fetchTransactions = async () => {
     try {
@@ -22,6 +91,8 @@ export default function Transactions() {
       if (filter.type) params.append('type', filter.type);
       if (filter.category_id) params.append('category_id', filter.category_id);
       if (filter.payee_id) params.append('payee_id', filter.payee_id);
+      if (filter.start_date) params.append('start_date', filter.start_date);
+      if (filter.end_date) params.append('end_date', filter.end_date);
       params.append('limit', '100');
       const { data } = await api.get(`/transactions?${params}`);
       setTransactions(data.transactions);
@@ -45,7 +116,13 @@ export default function Transactions() {
   };
 
   useEffect(() => { fetchCategories(); fetchPayees(); }, []);
-  useEffect(() => { fetchTransactions(); }, [filter.type, filter.category_id, filter.payee_id]);
+  useEffect(() => { fetchTransactions(); }, [filter.type, filter.category_id, filter.payee_id, filter.start_date, filter.end_date]);
+
+  useEffect(() => {
+    const handleRefresh = () => fetchTransactions();
+    window.addEventListener('transaction-added', handleRefresh);
+    return () => window.removeEventListener('transaction-added', handleRefresh);
+  }, []);
 
   const executeDelete = async () => {
     if (!deleteConfirmId) return;
@@ -67,6 +144,70 @@ export default function Transactions() {
     return (tx.description?.toLowerCase().includes(s) || tx.category_name?.toLowerCase().includes(s) || tx.payee_name?.toLowerCase().includes(s));
   });
 
+  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
+  const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  const exportToExcel = () => {
+    if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
+    
+    const data = filtered.map(tx => ({
+      'Tarih': new Date(tx.date).toLocaleDateString('tr-TR'),
+      'Ödeme Yeri': tx.payee_name || '-',
+      'Kategori': tx.category_name || '-',
+      'Açıklama': tx.description || '-',
+      'Gelir (₺)': tx.type === 'income' ? tx.amount : 0,
+      'Gider (₺)': tx.type === 'expense' ? tx.amount : 0
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "İşlemler");
+    XLSX.writeFile(wb, `Islemler_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  const exportToPDF = () => {
+    if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
+
+    const doc = new jsPDF();
+    doc.text('Islemler Raporu', 14, 15);
+
+    const safeText = (text) => {
+      if (!text) return '-';
+      return text.toString()
+        .replace(/ğ/g, 'g').replace(/Ğ/g, 'G')
+        .replace(/ü/g, 'u').replace(/Ü/g, 'U')
+        .replace(/ş/g, 's').replace(/Ş/g, 'S')
+        .replace(/ı/g, 'i').replace(/İ/g, 'I')
+        .replace(/ö/g, 'o').replace(/Ö/g, 'O')
+        .replace(/ç/g, 'c').replace(/Ç/g, 'C');
+    };
+    
+    const tableData = filtered.map(tx => [
+      new Date(tx.date).toLocaleDateString('tr-TR'),
+      safeText(tx.payee_name),
+      safeText(tx.category_name),
+      safeText(tx.description),
+      tx.type === 'income' ? formatMoney(tx.amount) : '-',
+      tx.type === 'expense' ? formatMoney(tx.amount) : '-'
+    ]);
+
+    doc.autoTable({
+      head: [['Tarih', 'Odeme Yeri', 'Kategori', 'Aciklama', 'Gelir', 'Gider']],
+      body: tableData,
+      startY: 20,
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [99, 102, 241] },
+      columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' } }
+    });
+
+    doc.save(`Islemler_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  useEffect(() => { setCurrentPage(1); }, [filter.search, filter.type, filter.category_id, filter.payee_id, filter.start_date, filter.end_date]);
+
+  const dateRanges = ['Geçmiş', 'Geçen Ay', 'Geçen 3 Ay', 'Geçen Çeyrek', 'Bugün', 'Bu Hafta', 'Bu Ay', 'Bu Çeyrek', '15 Gün', 'Gelecek 3 Ay'];
+  const dateRangesMapped = ['Gecmis', 'Gecen Ay', 'Gecen 3 Ay', 'Gecen Ceyrek', 'Bugun', 'Bu Hafta', 'Bu Ay', 'Bu Ceyrek', '15 Gun', 'Gelecek 3 Ay'];
+
   return (
     <div className="space-y-5 animate-fade-in">
       {/* Header */}
@@ -75,32 +216,113 @@ export default function Transactions() {
           <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>İşlemler</h2>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{total} kayıt bulundu</p>
         </div>
-        <button onClick={() => { setEditItem(null); setShowForm(true); }} className="btn btn-primary">
-          <Plus size={18} /> Yeni İşlem
-        </button>
       </div>
 
-      {/* Filters */}
-      <div className="card p-4">
-        <div className="flex flex-col sm:flex-row gap-3">
+      {/* Filters Area */}
+      <div className="flex flex-col gap-3 relative">
+        <div className="flex flex-col sm:flex-row gap-2 w-full">
           <div className="relative flex-1">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
-            <input className="input" style={{ paddingLeft: '40px' }} placeholder="Ara..." value={filter.search} onChange={(e) => setFilter(f => ({ ...f, search: e.target.value }))} />
+            <input className="input w-full" style={{ paddingLeft: '40px' }} placeholder="Ara..." value={filter.search} onChange={(e) => setFilter(f => ({ ...f, search: e.target.value }))} />
           </div>
-          <select className="select" style={{ width: 'auto', minWidth: '140px' }} value={filter.type} onChange={(e) => setFilter(f => ({ ...f, type: e.target.value }))}>
-            <option value="">Tüm Türler</option>
-            <option value="income">Gelir</option>
-            <option value="expense">Gider</option>
-          </select>
-          <select className="select" style={{ width: 'auto', minWidth: '160px' }} value={filter.category_id} onChange={(e) => setFilter(f => ({ ...f, category_id: e.target.value }))}>
-            <option value="">Tüm Kategoriler</option>
-            {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
-          </select>
-          <select className="select" style={{ width: 'auto', minWidth: '160px' }} value={filter.payee_id} onChange={(e) => setFilter(f => ({ ...f, payee_id: e.target.value }))}>
-            <option value="">Tüm Ödeme Yerleri</option>
-            {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-          </select>
+          
+          <div className="flex gap-2">
+            <button 
+              onClick={exportToExcel}
+              className="btn bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 gap-2"
+              title="Excel İndir"
+            >
+              <FileSpreadsheet size={18} /> <span className="hidden sm:inline">Excel</span>
+            </button>
+            <button 
+              onClick={exportToPDF}
+              className="btn bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 gap-2"
+              title="PDF İndir"
+            >
+              <FileText size={18} /> <span className="hidden sm:inline">PDF</span>
+            </button>
+            <button 
+              onClick={() => setShowFilters(!showFilters)}
+              className={`btn gap-2 transition-all ${showFilters ? 'bg-primary text-white shadow-md' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+            >
+              <Filter size={18} /> <span className="hidden sm:inline">Filtreler</span>
+            </button>
+          </div>
         </div>
+
+        {/* Popover / Expandable Filter Panel */}
+        {showFilters && (
+          <div className="card p-5 w-full md:w-[400px] absolute right-0 top-[52px] z-20 shadow-xl border border-[var(--border)] animate-fade-in origin-top-right">
+            
+            <div className="mb-4">
+              <h3 className="text-[11px] font-bold text-gray-400 mb-3 tracking-wider">VADE</h3>
+              <div className="flex flex-wrap gap-2">
+                {dateRanges.map((label, i) => {
+                  const val = dateRangesMapped[i];
+                  return (
+                    <button
+                      key={val}
+                      onClick={() => handleDateRangeClick(val)}
+                      className={`text-sm px-2 py-1 rounded-md transition-colors ${activeDateRange === val ? 'bg-primary/10 text-primary font-medium' : 'text-gray-600 hover:bg-gray-100'}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mb-4">
+              <h3 className="text-[11px] font-bold text-gray-400 mb-2 tracking-wider">KATEGORİ</h3>
+              <select className="select w-full" value={filter.category_id} onChange={(e) => setFilter(f => ({ ...f, category_id: e.target.value }))}>
+                <option value="">Tümü</option>
+                {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+              </select>
+            </div>
+
+            <div className="mb-4">
+              <h3 className="text-[11px] font-bold text-gray-400 mb-2 tracking-wider">ÖDEME YERİ</h3>
+              <select className="select w-full" value={filter.payee_id} onChange={(e) => setFilter(f => ({ ...f, payee_id: e.target.value }))}>
+                <option value="">Tümü</option>
+                {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+
+            <div className="pt-2 border-t border-[var(--border)] mt-4">
+              <button 
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className="flex items-center gap-2 text-sm text-primary hover:text-primary/80 font-medium transition-colors"
+              >
+                <Filter size={16} /> Gelişmiş Filtreler
+              </button>
+              
+              {showAdvanced && (
+                <div className="mt-4 space-y-4 animate-slide-down">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <h3 className="text-[11px] font-bold text-gray-400 mb-2 tracking-wider">BAŞLANGIÇ</h3>
+                      <input 
+                        type="date" 
+                        className="input w-full text-sm" 
+                        value={filter.start_date} 
+                        onChange={(e) => setFilter(f => ({ ...f, start_date: e.target.value }))} 
+                      />
+                    </div>
+                    <div>
+                      <h3 className="text-[11px] font-bold text-gray-400 mb-2 tracking-wider">BİTİŞ</h3>
+                      <input 
+                        type="date" 
+                        className="input w-full text-sm" 
+                        value={filter.end_date} 
+                        onChange={(e) => setFilter(f => ({ ...f, end_date: e.target.value }))} 
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -112,9 +334,10 @@ export default function Transactions() {
         ) : filtered.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-lg" style={{ color: 'var(--text-muted)' }}>📭 Henüz işlem bulunamadı</p>
-            <button onClick={() => setShowForm(true)} className="btn btn-primary mt-4"><Plus size={18} /> İlk İşlemi Ekle</button>
+            <button onClick={() => window.dispatchEvent(new CustomEvent('open-quick-add'))} className="btn btn-primary mt-4"><Plus size={18} /> İlk İşlemi Ekle</button>
           </div>
         ) : (
+          <>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
@@ -123,14 +346,14 @@ export default function Transactions() {
                   <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Ödeme Yeri</th>
                   <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Kategori</th>
                   <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Açıklama</th>
-                  <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Tür</th>
-                  <th className="text-right text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Tutar</th>
+                  <th className="text-right text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Gelir</th>
+                  <th className="text-right text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Gider</th>
                   <th className="text-right text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>İşlem</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((tx, i) => (
-                  <tr key={tx.id} className="transition-colors hover:bg-[var(--bg-secondary)]" style={{ borderBottom: '1px solid var(--border)', animationDelay: `${i * 30}ms` }}>
+                {paginated.map((tx, i) => (
+                  <tr key={`${tx.record_type}_${tx.id}`} className="transition-colors hover:bg-[var(--bg-secondary)]" style={{ borderBottom: '1px solid var(--border)', animationDelay: `${i * 30}ms` }}>
                     <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{new Date(tx.date).toLocaleDateString('tr-TR')}</td>
                     <td className="px-4 py-3 text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                       {tx.payee_name ? <span className="flex items-center gap-1">📍 {tx.payee_name}</span> : '-'}
@@ -142,19 +365,25 @@ export default function Transactions() {
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>{tx.description || '-'}</td>
-                    <td className="px-4 py-3">
-                      <span className={`badge ${tx.type === 'income' ? 'badge-income' : 'badge-expense'}`}>
-                        {tx.type === 'income' ? <><TrendingUp size={12} /> Gelir</> : <><TrendingDown size={12} /> Gider</>}
-                      </span>
+                    <td className="px-4 py-3 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      {tx.description || '-'}
                     </td>
-                    <td className={`px-4 py-3 text-sm font-semibold text-right ${tx.type === 'income' ? 'text-emerald-500' : 'text-red-500'}`}>
-                      {tx.type === 'income' ? '+' : '-'}{formatMoney(tx.amount)}
+                    <td className="px-4 py-3 text-sm font-semibold text-right text-emerald-500">
+                      {tx.type === 'income' ? formatMoney(tx.amount) : '-'}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-semibold text-right text-red-500">
+                      {tx.type === 'expense' ? formatMoney(tx.amount) : '-'}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
-                        <button type="button" onClick={() => handleEdit(tx)} className="btn-icon btn-ghost btn-sm"><Edit3 size={15} /></button>
-                        <button type="button" onClick={() => setDeleteConfirmId(tx.id)} className="btn-icon btn-ghost btn-sm hover:!text-red-500 relative z-10"><Trash2 size={15} /></button>
+                        {tx.record_type === 'transaction' ? (
+                          <>
+                            <button type="button" onClick={() => handleEdit(tx)} className="btn-icon btn-ghost btn-sm" title="İşlemi Düzenle"><Edit3 size={15} /></button>
+                            <button type="button" onClick={() => setDeleteConfirmId(tx.id)} className="btn-icon btn-ghost btn-sm hover:!text-red-500 relative z-10" title="İşlemi Sil"><Trash2 size={15} /></button>
+                          </>
+                        ) : (
+                          <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider" title="İptal için takvimler sayfasını kullanın">Taksit Ödemesi</span>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -162,6 +391,44 @@ export default function Transactions() {
               </tbody>
             </table>
           </div>
+          
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between mt-4 px-2">
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                Toplam {filtered.length} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} arası gösteriliyor
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  disabled={currentPage === 1}
+                  onClick={() => setCurrentPage(prev => prev - 1)}
+                  className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                  <button
+                    key={page}
+                    onClick={() => setCurrentPage(page)}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === page ? 'gradient-primary text-white shadow-md' : 'btn-ghost'}`}
+                    style={currentPage === page ? {} : { color: 'var(--text-secondary)' }}
+                  >
+                    {page}
+                  </button>
+                ))}
+
+                <button
+                  disabled={currentPage === totalPages}
+                  onClick={() => setCurrentPage(prev => prev + 1)}
+                  className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+          </>
         )}
       </div>
 

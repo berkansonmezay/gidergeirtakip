@@ -145,18 +145,18 @@ export default function Dashboard() {
           <div className="card p-5">
             <h3 className="text-base font-semibold mb-3" style={{ color: 'var(--text-primary)' }}>Hızlı İşlemler</h3>
             <div className="grid grid-cols-3 gap-3">
-              <Link to="/transactions" className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105" style={{ background: 'var(--bg-secondary)' }}>
+              <button onClick={() => window.dispatchEvent(new CustomEvent('open-quick-add', { detail: { type: 'income' } }))} className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105 w-full" style={{ background: 'var(--bg-secondary)' }}>
                 <div className="w-10 h-10 rounded-xl gradient-income flex items-center justify-center"><Plus size={20} className="text-white" /></div>
                 <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Gelir Ekle</span>
-              </Link>
-              <Link to="/transactions" className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105" style={{ background: 'var(--bg-secondary)' }}>
+              </button>
+              <button onClick={() => window.dispatchEvent(new CustomEvent('open-quick-add', { detail: { type: 'expense' } }))} className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105 w-full" style={{ background: 'var(--bg-secondary)' }}>
                 <div className="w-10 h-10 rounded-xl gradient-expense flex items-center justify-center"><TrendingDown size={20} className="text-white" /></div>
                 <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Gider Ekle</span>
-              </Link>
-              <Link to="/installments" className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105" style={{ background: 'var(--bg-secondary)' }}>
+              </button>
+              <button onClick={() => window.dispatchEvent(new CustomEvent('open-quick-add', { detail: { type: 'expense' } }))} className="flex flex-col items-center gap-2 p-3 rounded-xl transition-all hover:scale-105 w-full" style={{ background: 'var(--bg-secondary)' }}>
                 <div className="w-10 h-10 rounded-xl gradient-primary flex items-center justify-center"><CreditCard size={20} className="text-white" /></div>
                 <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Taksit Ekle</span>
-              </Link>
+              </button>
             </div>
           </div>
 

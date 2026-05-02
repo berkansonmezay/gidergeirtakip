@@ -8,53 +8,79 @@ router.use(authenticateToken);
 // GET /api/transactions
 router.get('/', (req, res) => {
   try {
-    const { type, category_id, payee_id, start_date, end_date, limit = 50, offset = 0 } = req.query;
+    const { type, category_id, payee_id, start_date, end_date, search, limit = 50, offset = 0 } = req.query;
     
-    let query = `
-      SELECT t.*, c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name
-      FROM transactions t
-      LEFT JOIN categories c ON t.category_id = c.id
-      LEFT JOIN payees p ON t.payee_id = p.id
-      WHERE t.user_id = ?
+    let baseQuery = `
+      SELECT * FROM (
+        SELECT 
+          t.id, 
+          t.amount, 
+          t.description, 
+          t.date, 
+          t.type, 
+          t.category_id, 
+          t.payee_id, 
+          t.created_at,
+          c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name,
+          'transaction' as record_type
+        FROM transactions t
+        LEFT JOIN categories c ON t.category_id = c.id
+        LEFT JOIN payees p ON t.payee_id = p.id
+        WHERE t.user_id = ?
+
+        UNION ALL
+
+        SELECT 
+          ip.id, 
+          ip.amount, 
+          i.description || ' (' || ip.payment_number || '. Taksit)' as description, 
+          ip.paid_date as date, 
+          i.type, 
+          i.category_id, 
+          i.payee_id, 
+          i.created_at,
+          c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name,
+          'installment_payment' as record_type
+        FROM installment_payments ip
+        JOIN installments i ON ip.installment_id = i.id
+        LEFT JOIN categories c ON i.category_id = c.id
+        LEFT JOIN payees p ON i.payee_id = p.id
+        WHERE i.user_id = ? AND ip.is_paid = 1
+      ) as combined
+      WHERE 1=1
     `;
-    const params = [req.user.id];
+    const params = [req.user.id, req.user.id];
 
     if (type) {
-      query += ' AND t.type = ?';
+      baseQuery += ' AND type = ?';
       params.push(type);
     }
     if (category_id) {
-      query += ' AND t.category_id = ?';
+      baseQuery += ' AND category_id = ?';
       params.push(category_id);
     }
     if (payee_id) {
-      query += ' AND t.payee_id = ?';
+      baseQuery += ' AND payee_id = ?';
       params.push(payee_id);
     }
     if (start_date) {
-      query += ' AND t.date >= ?';
+      baseQuery += ' AND date >= ?';
       params.push(start_date);
     }
     if (end_date) {
-      query += ' AND t.date <= ?';
+      baseQuery += ' AND date <= ?';
       params.push(end_date);
     }
 
-    query += ' ORDER BY t.date DESC, t.created_at DESC LIMIT ? OFFSET ?';
-    params.push(parseInt(limit), parseInt(offset));
+    // For the actual results
+    let dataQuery = baseQuery + ' ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?';
+    const dataParams = [...params, parseInt(limit), parseInt(offset)];
+    
+    const transactions = db.prepare(dataQuery).all(...dataParams);
 
-    const transactions = db.prepare(query).all(...params);
-
-    // Get total count
-    let countQuery = 'SELECT COUNT(*) as total FROM transactions WHERE user_id = ?';
-    const countParams = [req.user.id];
-    if (type) { countQuery += ' AND type = ?'; countParams.push(type); }
-    if (category_id) { countQuery += ' AND category_id = ?'; countParams.push(category_id); }
-    if (payee_id) { countQuery += ' AND payee_id = ?'; countParams.push(payee_id); }
-    if (start_date) { countQuery += ' AND date >= ?'; countParams.push(start_date); }
-    if (end_date) { countQuery += ' AND date <= ?'; countParams.push(end_date); }
-
-    const { total } = db.prepare(countQuery).get(...countParams);
+    // For the total count
+    let countQuery = 'SELECT COUNT(*) as total FROM (' + baseQuery + ')';
+    const { total } = db.prepare(countQuery).get(...params);
 
     res.json({ transactions, total, limit: parseInt(limit), offset: parseInt(offset) });
   } catch (err) {
