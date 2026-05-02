@@ -1,17 +1,27 @@
 import { Router } from 'express';
-import db from '../config/database.js';
+import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authenticateToken);
 
 // GET /api/notifications
-// Kullanıcının bildirimlerini listele
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const notifications = db.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').all(req.user.id);
+    const snapshot = await db.collection('notifications')
+      .where('user_id', '==', req.user.id)
+      .get();
+      
+    let notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    notifications.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
+    notifications = notifications.slice(0, 50);
     
-    const unreadCount = db.prepare('SELECT COUNT(*) as count FROM notifications WHERE user_id = ? AND is_read = 0').get(req.user.id).count;
+    const unreadSnapshot = await db.collection('notifications')
+      .where('user_id', '==', req.user.id)
+      .where('is_read', '==', 0)
+      .get();
+      
+    const unreadCount = unreadSnapshot.size;
     
     res.json({ notifications, unreadCount });
   } catch (err) {
@@ -21,22 +31,37 @@ router.get('/', (req, res) => {
 });
 
 // PUT /api/notifications/read-all
-// Tüm bildirimleri okundu olarak işaretle
-router.put('/read-all', (req, res) => {
+router.put('/read-all', async (req, res) => {
   try {
-    db.prepare('UPDATE notifications SET is_read = 1 WHERE user_id = ?').run(req.user.id);
+    const snapshot = await db.collection('notifications')
+      .where('user_id', '==', req.user.id)
+      .where('is_read', '==', 0)
+      .get();
+      
+    const batch = db.batch();
+    snapshot.docs.forEach(doc => {
+      batch.update(doc.ref, { is_read: 1 });
+    });
+    
+    await batch.commit();
     res.json({ message: 'Tüm bildirimler okundu olarak işaretlendi.' });
   } catch (err) {
+    console.error('Read-all error:', err);
     res.status(500).json({ error: 'Sunucu hatası oluştu.' });
   }
 });
 
 // PUT /api/notifications/:id/read
-// Belirli bir bildirimi okundu olarak işaretle
-router.put('/:id/read', (req, res) => {
+router.put('/:id/read', async (req, res) => {
   try {
-    const r = db.prepare('UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
-    if (r.changes === 0) return res.status(404).json({ error: 'Bildirim bulunamadı.' });
+    const docRef = db.collection('notifications').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Bildirim bulunamadı.' });
+    }
+    
+    await docRef.update({ is_read: 1 });
     res.json({ message: 'Bildirim okundu olarak işaretlendi.' });
   } catch (err) {
     res.status(500).json({ error: 'Sunucu hatası oluştu.' });
@@ -44,11 +69,16 @@ router.put('/:id/read', (req, res) => {
 });
 
 // DELETE /api/notifications/:id
-// Belirli bir bildirimi sil
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const r = db.prepare('DELETE FROM notifications WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
-    if (r.changes === 0) return res.status(404).json({ error: 'Bildirim bulunamadı.' });
+    const docRef = db.collection('notifications').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Bildirim bulunamadı.' });
+    }
+    
+    await docRef.delete();
     res.json({ message: 'Bildirim silindi.' });
   } catch (err) {
     res.status(500).json({ error: 'Sunucu hatası oluştu.' });

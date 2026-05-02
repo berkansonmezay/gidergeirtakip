@@ -1,26 +1,66 @@
 import { Router } from 'express';
-import db, { seedUserCategories } from '../config/database.js';
+import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authenticateToken);
 
-router.post('/', (req, res) => {
+async function seedUserCategories(userId) {
+  try {
+    const defaultSnapshot = await db.collection('categories').where('is_default', '==', 1).get();
+    const batch = db.batch();
+    
+    defaultSnapshot.docs.forEach(doc => {
+      const data = doc.data();
+      const newRef = db.collection('categories').doc();
+      batch.set(newRef, {
+        name: data.name,
+        type: data.type,
+        icon: data.icon,
+        color: data.color,
+        user_id: userId,
+        is_default: 0,
+        created_at: new Date().toISOString()
+      });
+    });
+    
+    await batch.commit();
+    console.log(`🎨 Kullanıcı ${userId} için kategoriler kopyalandı.`);
+  } catch (err) {
+    console.error('Kategoriler kopyalanırken hata:', err);
+  }
+}
+
+router.post('/', async (req, res) => {
   try {
     const { name } = req.body;
     if (!name) return res.status(400).json({ error: 'Aile adı zorunludur.' });
-    const r = db.prepare('INSERT INTO families (name, created_by) VALUES (?,?)').run(name, req.user.id);
-    db.prepare('UPDATE users SET family_id=?, role=\'family_admin\' WHERE id=?').run(r.lastInsertRowid, req.user.id);
-    res.status(201).json({ message: 'Aile oluşturuldu.', family: db.prepare('SELECT * FROM families WHERE id=?').get(r.lastInsertRowid) });
+
+    const newFamily = {
+      name,
+      created_by: req.user.id,
+      created_at: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('families').add(newFamily);
+    await db.collection('users').doc(req.user.id).update({ family_id: docRef.id, role: 'family_admin' });
+    
+    res.status(201).json({ message: 'Aile oluşturuldu.', family: { id: docRef.id, ...newFamily } });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
 });
 
-router.get('/members', (req, res) => {
+router.get('/members', async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Bu işlem için admin yetkisi gerekiyor.' });
     }
-    const members = db.prepare("SELECT id, name, username, email, role, created_at FROM users WHERE role != 'admin'").all();
+    
+    const snapshot = await db.collection('users').where('role', '!=', 'admin').get();
+    const members = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return { id: doc.id, name: data.name, username: data.username, email: data.email, role: data.role, created_at: data.created_at };
+    });
+    
     res.json({ members });
   } catch (err) { 
     console.error('GET /members error:', err);
@@ -38,50 +78,53 @@ router.post('/members', async (req, res) => {
       return res.status(400).json({ error: 'İsim, kullanıcı adı ve şifre zorunludur.' });
     }
     
-    const existingUser = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
-    if (existingUser) {
+    const existingUser = await db.collection('users').where('username', '==', username).limit(1).get();
+    if (!existingUser.empty) {
       return res.status(409).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
     }
 
     // Admin's family_id
-    let adminUser = db.prepare('SELECT family_id FROM users WHERE id=?').get(req.user.id);
-    let familyId = adminUser?.family_id;
+    const adminDoc = await db.collection('users').doc(req.user.id).get();
+    let familyId = adminDoc.data()?.family_id;
 
     if (!familyId) {
-      // Create a default family for admin if none exists
-      const r = db.prepare('INSERT INTO families (name, created_by) VALUES (?,?)').run('Aile', req.user.id);
-      familyId = r.lastInsertRowid;
-      db.prepare('UPDATE users SET family_id=? WHERE id=?').run(familyId, req.user.id);
+      const docRef = await db.collection('families').add({ name: 'Aile', created_by: req.user.id, created_at: new Date().toISOString() });
+      familyId = docRef.id;
+      await db.collection('users').doc(req.user.id).update({ family_id: familyId });
     }
 
     const bcrypt = await import('bcryptjs');
     const passwordHash = await bcrypt.default.hash(password, 12);
 
-    const result = db.prepare(
-      'INSERT INTO users (name, username, password_hash, role, family_id) VALUES (?, ?, ?, ?, ?)'
-    ).run(name, username, passwordHash, 'user', familyId);
+    const newUserRef = await db.collection('users').add({
+      name,
+      username,
+      password_hash: passwordHash,
+      role: 'user',
+      family_id: familyId,
+      created_at: new Date().toISOString()
+    });
 
-    seedUserCategories(result.lastInsertRowid);
+    await seedUserCategories(newUserRef.id);
 
-    res.status(201).json({ message: 'Kullanıcı oluşturuldu.', member: { id: result.lastInsertRowid, name, username, role: 'user' } });
+    res.status(201).json({ message: 'Kullanıcı oluşturuldu.', member: { id: newUserRef.id, name, username, role: 'user' } });
   } catch (err) { 
     console.error(err);
     res.status(500).json({ error: 'Hata oluştu.' }); 
   }
 });
 
-router.delete('/members/:id', (req, res) => {
+router.delete('/members/:id', async (req, res) => {
   try {
     if (req.user.role !== 'admin') {
       return res.status(403).json({ error: 'Bu işlem için admin yetkisi gerekiyor.' });
     }
     
-    // Güvenlik: Adminin kendisini silmesini engelle
-    if (req.params.id == req.user.id) {
+    if (req.params.id === req.user.id) {
       return res.status(400).json({ error: 'Kendinizi silemezsiniz.' });
     }
 
-    db.prepare('DELETE FROM users WHERE id=?').run(req.params.id);
+    await db.collection('users').doc(req.params.id).delete();
     res.json({ message: 'Kullanıcı silindi.' });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
 });
@@ -99,26 +142,20 @@ router.put('/members/:id', async (req, res) => {
       return res.status(400).json({ error: 'İsim ve kullanıcı adı zorunludur.' });
     }
 
-    // Check if the username is taken by another user
-    const existingUser = db.prepare('SELECT id FROM users WHERE username = ? AND id != ?').get(username, id);
-    if (existingUser) {
+    const existingUser = await db.collection('users').where('username', '==', username).get();
+    const isTaken = existingUser.docs.some(doc => doc.id !== id);
+    if (isTaken) {
       return res.status(409).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
     }
 
-    let query = 'UPDATE users SET name = ?, username = ?';
-    let params = [name, username];
+    const updates = { name, username };
 
     if (password) {
       const bcrypt = await import('bcryptjs');
-      const passwordHash = await bcrypt.default.hash(password, 12);
-      query += ', password_hash = ?';
-      params.push(passwordHash);
+      updates.password_hash = await bcrypt.default.hash(password, 12);
     }
 
-    query += ' WHERE id = ?';
-    params.push(id);
-
-    db.prepare(query).run(...params);
+    await db.collection('users').doc(id).update(updates);
     res.json({ message: 'Kullanıcı başarıyla güncellendi.' });
   } catch (err) {
     console.error('Update error:', err);

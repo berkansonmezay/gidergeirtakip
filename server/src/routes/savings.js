@@ -1,45 +1,81 @@
 import { Router } from 'express';
-import db from '../config/database.js';
+import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authenticateToken);
 
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
-    const goals = db.prepare('SELECT * FROM savings_goals WHERE user_id = ? ORDER BY created_at DESC').all(req.user.id);
+    const snapshot = await db.collection('savings_goals')
+      .where('user_id', '==', req.user.id)
+      .get();
+      
+    const goals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    goals.sort((a, b) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime());
     res.json({ goals });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
 });
 
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, target_amount, deadline } = req.body;
     if (!name || !target_amount) return res.status(400).json({ error: 'Ad ve hedef tutar zorunludur.' });
-    const r = db.prepare('INSERT INTO savings_goals (name, target_amount, current_amount, deadline, user_id) VALUES (?,?,0,?,?)').run(name, target_amount, deadline || null, req.user.id);
-    res.status(201).json({ message: 'Hedef oluşturuldu.', goal: db.prepare('SELECT * FROM savings_goals WHERE id=?').get(r.lastInsertRowid) });
+    
+    const newGoal = {
+      name,
+      target_amount: Number(target_amount),
+      current_amount: 0,
+      deadline: deadline || null,
+      user_id: req.user.id,
+      status: 'active',
+      created_at: new Date().toISOString()
+    };
+    
+    const docRef = await db.collection('savings_goals').add(newGoal);
+    res.status(201).json({ message: 'Hedef oluşturuldu.', goal: { id: docRef.id, ...newGoal } });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
 });
 
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
-    const g = db.prepare('SELECT * FROM savings_goals WHERE id=? AND user_id=?').get(req.params.id, req.user.id);
-    if (!g) return res.status(404).json({ error: 'Bulunamadı.' });
+    const docRef = db.collection('savings_goals').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Bulunamadı.' });
+    }
+    
+    const g = doc.data();
     const { name, target_amount, current_amount, deadline, add_amount } = req.body;
-    const newCurrent = add_amount ? g.current_amount + add_amount : (current_amount !== undefined ? current_amount : g.current_amount);
-    const newTarget = target_amount || g.target_amount;
+    
+    const newCurrent = add_amount ? g.current_amount + Number(add_amount) : (current_amount !== undefined ? Number(current_amount) : g.current_amount);
+    const newTarget = target_amount ? Number(target_amount) : g.target_amount;
     const isComplete = newCurrent >= newTarget;
-    db.prepare('UPDATE savings_goals SET name=?, target_amount=?, current_amount=?, deadline=?, status=? WHERE id=?').run(
-      name || g.name, newTarget, newCurrent, deadline !== undefined ? deadline : g.deadline, isComplete ? 'completed' : 'active', req.params.id
-    );
-    res.json({ message: 'Hedef güncellendi.', goal: db.prepare('SELECT * FROM savings_goals WHERE id=?').get(req.params.id) });
+    
+    const updates = {
+      name: name || g.name,
+      target_amount: newTarget,
+      current_amount: newCurrent,
+      deadline: deadline !== undefined ? deadline : g.deadline,
+      status: isComplete ? 'completed' : 'active'
+    };
+    
+    await docRef.update(updates);
+    res.json({ message: 'Hedef güncellendi.', goal: { id: req.params.id, ...g, ...updates } });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const r = db.prepare('DELETE FROM savings_goals WHERE id=? AND user_id=?').run(req.params.id, req.user.id);
-    if (r.changes === 0) return res.status(404).json({ error: 'Bulunamadı.' });
+    const docRef = db.collection('savings_goals').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Bulunamadı.' });
+    }
+    
+    await docRef.delete();
     res.json({ message: 'Silindi.' });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
 });

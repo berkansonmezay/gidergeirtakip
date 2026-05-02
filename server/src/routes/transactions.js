@@ -1,87 +1,125 @@
 import { Router } from 'express';
-import db from '../config/database.js';
+import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authenticateToken);
 
+// Helper to fetch referenced docs
+async function fetchReferences(categoryIds, payeeIds) {
+  const categories = {};
+  const payees = {};
+  
+  if (categoryIds.size > 0) {
+    const catsSnapshot = await db.collection('categories').where('__name__', 'in', Array.from(categoryIds).slice(0, 30)).get();
+    catsSnapshot.docs.forEach(doc => categories[doc.id] = doc.data());
+  }
+  
+  if (payeeIds.size > 0) {
+    const payeesSnapshot = await db.collection('payees').where('__name__', 'in', Array.from(payeeIds).slice(0, 30)).get();
+    payeesSnapshot.docs.forEach(doc => payees[doc.id] = doc.data());
+  }
+  
+  return { categories, payees };
+}
+
 // GET /api/transactions
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { type, category_id, payee_id, start_date, end_date, search, limit = 50, offset = 0 } = req.query;
     
-    let baseQuery = `
-      SELECT * FROM (
-        SELECT 
-          t.id, 
-          t.amount, 
-          t.description, 
-          t.date, 
-          t.type, 
-          t.category_id, 
-          t.payee_id, 
-          t.created_at,
-          c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name,
-          'transaction' as record_type
-        FROM transactions t
-        LEFT JOIN categories c ON t.category_id = c.id
-        LEFT JOIN payees p ON t.payee_id = p.id
-        WHERE t.user_id = ?
-
-        UNION ALL
-
-        SELECT 
-          ip.id, 
-          ip.amount, 
-          i.description || ' (' || ip.payment_number || '. Taksit)' as description, 
-          ip.paid_date as date, 
-          i.type, 
-          i.category_id, 
-          i.payee_id, 
-          i.created_at,
-          c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name,
-          'installment_payment' as record_type
-        FROM installment_payments ip
-        JOIN installments i ON ip.installment_id = i.id
-        LEFT JOIN categories c ON i.category_id = c.id
-        LEFT JOIN payees p ON i.payee_id = p.id
-        WHERE i.user_id = ? AND ip.is_paid = 1
-      ) as combined
-      WHERE 1=1
-    `;
-    const params = [req.user.id, req.user.id];
-
-    if (type) {
-      baseQuery += ' AND type = ?';
-      params.push(type);
-    }
-    if (category_id) {
-      baseQuery += ' AND category_id = ?';
-      params.push(category_id);
-    }
-    if (payee_id) {
-      baseQuery += ' AND payee_id = ?';
-      params.push(payee_id);
-    }
-    if (start_date) {
-      baseQuery += ' AND date >= ?';
-      params.push(start_date);
-    }
-    if (end_date) {
-      baseQuery += ' AND date <= ?';
-      params.push(end_date);
-    }
-
-    // For the actual results
-    let dataQuery = baseQuery + ' ORDER BY date DESC, created_at DESC LIMIT ? OFFSET ?';
-    const dataParams = [...params, parseInt(limit), parseInt(offset)];
+    // 1. Fetch transactions
+    let txRef = db.collection('transactions').where('user_id', '==', req.user.id);
+    if (type) txRef = txRef.where('type', '==', type);
+    if (category_id) txRef = txRef.where('category_id', '==', category_id);
+    if (payee_id) txRef = txRef.where('payee_id', '==', payee_id);
+    if (start_date) txRef = txRef.where('date', '>=', start_date);
+    if (end_date) txRef = txRef.where('date', '<=', end_date);
     
-    const transactions = db.prepare(dataQuery).all(...dataParams);
-
-    // For the total count
-    let countQuery = 'SELECT COUNT(*) as total FROM (' + baseQuery + ')';
-    const { total } = db.prepare(countQuery).get(...params);
-
+    const txSnapshot = await txRef.get();
+    let allRecords = txSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), record_type: 'transaction' }));
+    
+    // 2. Fetch installments (to simulate the UNION ALL)
+    let instRef = db.collection('installments').where('user_id', '==', req.user.id);
+    if (type) instRef = instRef.where('type', '==', type);
+    if (category_id) instRef = instRef.where('category_id', '==', category_id);
+    if (payee_id) instRef = instRef.where('payee_id', '==', payee_id);
+    
+    const instSnapshot = await instRef.get();
+    const installments = instSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // We need to fetch installment_payments for these installments
+    if (installments.length > 0) {
+      const instIds = installments.map(i => i.id);
+      
+      // Firestore 'in' query supports up to 30 elements. Split into chunks if necessary.
+      const instChunks = [];
+      for (let i = 0; i < instIds.length; i += 30) {
+        instChunks.push(instIds.slice(i, i + 30));
+      }
+      
+      let allPayments = [];
+      for (const chunk of instChunks) {
+        const paySnapshot = await db.collection('installment_payments')
+          .where('installment_id', 'in', chunk)
+          .where('is_paid', '==', 1)
+          .get();
+        paySnapshot.docs.forEach(doc => allPayments.push({ id: doc.id, ...doc.data() }));
+      }
+      
+      // Combine installment data with payments
+      for (const payment of allPayments) {
+        const parentInst = installments.find(i => i.id === String(payment.installment_id));
+        if (!parentInst) continue;
+        
+        // Date filtering
+        if (start_date && payment.paid_date < start_date) continue;
+        if (end_date && payment.paid_date > end_date) continue;
+        
+        allRecords.push({
+          id: payment.id,
+          amount: payment.amount,
+          description: parentInst.description + ' (' + payment.payment_number + '. Taksit)',
+          date: payment.paid_date,
+          type: parentInst.type,
+          category_id: parentInst.category_id,
+          payee_id: parentInst.payee_id,
+          created_at: parentInst.created_at,
+          record_type: 'installment_payment'
+        });
+      }
+    }
+    
+    // Sort by date DESC, created_at DESC
+    allRecords.sort((a, b) => {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return dateB - dateA;
+      return new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime();
+    });
+    
+    // Pagination
+    const total = allRecords.length;
+    const paginatedRecords = allRecords.slice(parseInt(offset), parseInt(offset) + parseInt(limit));
+    
+    // Resolve categories and payees
+    const categoryIds = new Set();
+    const payeeIds = new Set();
+    paginatedRecords.forEach(r => {
+      if (r.category_id) categoryIds.add(String(r.category_id));
+      if (r.payee_id) payeeIds.add(String(r.payee_id));
+    });
+    
+    const { categories, payees } = await fetchReferences(categoryIds, payeeIds);
+    
+    const transactions = paginatedRecords.map(r => ({
+      ...r,
+      category_name: categories[r.category_id]?.name || null,
+      category_icon: categories[r.category_id]?.icon || null,
+      category_color: categories[r.category_id]?.color || null,
+      payee_name: payees[r.payee_id]?.name || null
+    }));
+    
     res.json({ transactions, total, limit: parseInt(limit), offset: parseInt(offset) });
   } catch (err) {
     console.error('Transactions list error:', err);
@@ -90,7 +128,7 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/transactions
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { amount, description, date, type, category_id, payee_id } = req.body;
 
@@ -102,19 +140,37 @@ router.post('/', (req, res) => {
       return res.status(400).json({ error: 'Geçersiz işlem türü.' });
     }
 
-    const result = db.prepare(`
-      INSERT INTO transactions (amount, description, date, type, category_id, payee_id, user_id)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(amount, description || '', date, type, category_id || null, payee_id || null, req.user.id);
+    const newTx = {
+      amount: Number(amount),
+      description: description || '',
+      date,
+      type,
+      category_id: category_id ? String(category_id) : null,
+      payee_id: payee_id ? String(payee_id) : null,
+      user_id: req.user.id,
+      created_at: new Date().toISOString()
+    };
 
-    const transaction = db.prepare(`
-      SELECT t.*, c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name
-      FROM transactions t
-      LEFT JOIN categories c ON t.category_id = c.id
-      LEFT JOIN payees p ON t.payee_id = p.id
-      WHERE t.id = ?
-    `).get(result.lastInsertRowid);
+    const docRef = await db.collection('transactions').add(newTx);
+    
+    let category_name = null, category_icon = null, category_color = null, payee_name = null;
+    
+    if (category_id) {
+      const cDoc = await db.collection('categories').doc(String(category_id)).get();
+      if (cDoc.exists) {
+        const cData = cDoc.data();
+        category_name = cData.name;
+        category_icon = cData.icon;
+        category_color = cData.color;
+      }
+    }
+    
+    if (payee_id) {
+      const pDoc = await db.collection('payees').doc(String(payee_id)).get();
+      if (pDoc.exists) payee_name = pDoc.data().name;
+    }
 
+    const transaction = { id: docRef.id, ...newTx, category_name, category_icon, category_color, payee_name };
     res.status(201).json({ message: 'İşlem eklendi.', transaction });
   } catch (err) {
     console.error('Transaction create error:', err);
@@ -123,38 +179,47 @@ router.post('/', (req, res) => {
 });
 
 // PUT /api/transactions/:id
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
     const { amount, description, date, type, category_id, payee_id } = req.body;
 
-    const existing = db.prepare('SELECT * FROM transactions WHERE id = ? AND user_id = ?').get(id, req.user.id);
-    if (!existing) {
+    const docRef = db.collection('transactions').doc(id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
       return res.status(404).json({ error: 'İşlem bulunamadı.' });
     }
 
-    db.prepare(`
-      UPDATE transactions SET amount = ?, description = ?, date = ?, type = ?, category_id = ?, payee_id = ?
-      WHERE id = ? AND user_id = ?
-    `).run(
-      amount || existing.amount,
-      description !== undefined ? description : existing.description,
-      date || existing.date,
-      type || existing.type,
-      category_id !== undefined ? category_id : existing.category_id,
-      payee_id !== undefined ? payee_id : existing.payee_id,
-      id,
-      req.user.id
-    );
+    const updates = {};
+    if (amount !== undefined) updates.amount = Number(amount);
+    if (description !== undefined) updates.description = description;
+    if (date !== undefined) updates.date = date;
+    if (type !== undefined) updates.type = type;
+    if (category_id !== undefined) updates.category_id = category_id ? String(category_id) : null;
+    if (payee_id !== undefined) updates.payee_id = payee_id ? String(payee_id) : null;
 
-    const transaction = db.prepare(`
-      SELECT t.*, c.name as category_name, c.icon as category_icon, c.color as category_color, p.name as payee_name
-      FROM transactions t
-      LEFT JOIN categories c ON t.category_id = c.id
-      LEFT JOIN payees p ON t.payee_id = p.id
-      WHERE t.id = ?
-    `).get(id);
+    await docRef.update(updates);
+    
+    const updatedDoc = await docRef.get();
+    const tData = updatedDoc.data();
+    
+    let category_name = null, category_icon = null, category_color = null, payee_name = null;
+    if (tData.category_id) {
+      const cDoc = await db.collection('categories').doc(tData.category_id).get();
+      if (cDoc.exists) {
+        const cData = cDoc.data();
+        category_name = cData.name;
+        category_icon = cData.icon;
+        category_color = cData.color;
+      }
+    }
+    if (tData.payee_id) {
+      const pDoc = await db.collection('payees').doc(tData.payee_id).get();
+      if (pDoc.exists) payee_name = pDoc.data().name;
+    }
 
+    const transaction = { id, ...tData, category_name, category_icon, category_color, payee_name };
     res.json({ message: 'İşlem güncellendi.', transaction });
   } catch (err) {
     console.error('Transaction update error:', err);
@@ -163,12 +228,16 @@ router.put('/:id', (req, res) => {
 });
 
 // DELETE /api/transactions/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const result = db.prepare('DELETE FROM transactions WHERE id = ? AND user_id = ?').run(req.params.id, req.user.id);
-    if (result.changes === 0) {
+    const docRef = db.collection('transactions').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
       return res.status(404).json({ error: 'İşlem bulunamadı.' });
     }
+    
+    await docRef.delete();
     res.json({ message: 'İşlem silindi.' });
   } catch (err) {
     console.error('Transaction delete error:', err);
@@ -177,7 +246,7 @@ router.delete('/:id', (req, res) => {
 });
 
 // GET /api/transactions/summary
-router.get('/summary', (req, res) => {
+router.get('/summary', async (req, res) => {
   try {
     const { month, year } = req.query;
     const now = new Date();
@@ -187,22 +256,27 @@ router.get('/summary', (req, res) => {
     const startDate = `${targetYear}-${String(targetMonth).padStart(2, '0')}-01`;
     const endDate = new Date(targetYear, targetMonth, 0).toISOString().split('T')[0];
 
-    const income = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-      WHERE user_id = ? AND type = 'income' AND date >= ? AND date <= ?
-    `).get(req.user.id, startDate, endDate);
-
-    const expense = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total FROM transactions
-      WHERE user_id = ? AND type = 'expense' AND date >= ? AND date <= ?
-    `).get(req.user.id, startDate, endDate);
+    const snapshot = await db.collection('transactions')
+      .where('user_id', '==', req.user.id)
+      .where('date', '>=', startDate)
+      .where('date', '<=', endDate)
+      .get();
+      
+    let totalIncome = 0;
+    let totalExpense = 0;
+    
+    snapshot.docs.forEach(doc => {
+      const data = doc.data();
+      if (data.type === 'income') totalIncome += Number(data.amount) || 0;
+      if (data.type === 'expense') totalExpense += Number(data.amount) || 0;
+    });
 
     res.json({
       month: targetMonth,
       year: targetYear,
-      totalIncome: income.total,
-      totalExpense: expense.total,
-      balance: income.total - expense.total,
+      totalIncome,
+      totalExpense,
+      balance: totalIncome - totalExpense,
     });
   } catch (err) {
     console.error('Summary error:', err);

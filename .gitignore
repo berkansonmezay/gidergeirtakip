@@ -9,3 +9,5 @@ build/
 *.db-wal
 server/data/
 *.sqlite
+serviceAccountKey.json
+server/src/config/serviceAccountKey.json

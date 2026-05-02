@@ -1,63 +1,84 @@
 import cron from 'node-cron';
-import db from '../config/database.js';
+import { db } from '../config/firebase.js';
 import { sendInstallmentReminderEmail } from './email.js';
 
 /**
  * Initializes all cron jobs for the application.
  */
 export const initializeCronJobs = () => {
-  // Run every day at 09:00 AM
-  // Format: second minute hour day-of-month month day-of-week
-  // cron.schedule('0 9 * * *', ...)
-
-  // For testing purposes, we can also run it every minute if needed, 
-  // but let's stick to the production schedule and provide a way to test.
-  
   const schedule = process.env.CRON_SCHEDULE_INSTALLMENT_REMINDER || '0 9 * * *';
 
   cron.schedule(schedule, async () => {
     console.log('⏰ [Cron] Taksit ödeme hatırlatıcı kontrolü başlatılıyor...');
     
     try {
-      // Calculate tomorrow's date
       const tomorrow = new Date();
       tomorrow.setDate(tomorrow.getDate() + 1);
       const tomorrowStr = tomorrow.toISOString().split('T')[0];
 
-      // Query database for unpaid installment payments due tomorrow
-      const query = `
-        SELECT 
-          p.id as payment_id,
-          p.amount,
-          p.due_date,
-          i.description as installment_desc,
-          u.id as user_id,
-          u.name as user_name,
-          u.email as user_email
-        FROM installment_payments p
-        JOIN installments i ON p.installment_id = i.id
-        JOIN users u ON i.user_id = u.id
-        WHERE p.due_date = ? AND p.is_paid = 0 AND i.status = 'active'
-      `;
+      // Fetch unpaid payments due tomorrow
+      const paySnapshot = await db.collection('installment_payments')
+        .where('due_date', '==', tomorrowStr)
+        .where('is_paid', '==', 0)
+        .get();
 
-      const paymentsDueTomorrow = db.prepare(query).all(tomorrowStr);
+      if (paySnapshot.empty) {
+        console.log('ℹ️ [Cron] Yarın için yaklaşan taksit ödemesi bulunamadı.');
+        return;
+      }
+
+      const paymentsDueTomorrow = [];
+
+      // Manually join with installments and users
+      for (const payDoc of paySnapshot.docs) {
+        const payment = payDoc.data();
+        
+        const instRef = db.collection('installments').doc(String(payment.installment_id));
+        const instDoc = await instRef.get();
+        
+        if (!instDoc.exists || instDoc.data().status !== 'active') {
+          continue;
+        }
+        
+        const installment = instDoc.data();
+        
+        const userRef = db.collection('users').doc(String(installment.user_id));
+        const userDoc = await userRef.get();
+        
+        if (!userDoc.exists) continue;
+        
+        const user = userDoc.data();
+        
+        paymentsDueTomorrow.push({
+          payment_id: payDoc.id,
+          amount: payment.amount,
+          due_date: payment.due_date,
+          installment_desc: installment.description,
+          user_id: userDoc.id,
+          user_name: user.name,
+          user_email: user.email
+        });
+      }
 
       if (paymentsDueTomorrow.length === 0) {
-        console.log('ℹ️ [Cron] Yarın için yaklaşan taksit ödemesi bulunamadı.');
+        console.log('ℹ️ [Cron] Yarın için yaklaşan taksit ödemesi bulunamadı (Tüm taksitler aktif değil).');
         return;
       }
 
       console.log(`ℹ️ [Cron] Yarın için ${paymentsDueTomorrow.length} adet taksit ödemesi bulundu. Hatırlatıcılar gönderiliyor...`);
 
       for (const payment of paymentsDueTomorrow) {
-        // Prepare notification data
         const title = 'Taksit Ödeme Hatırlatması';
         const message = `Yarın (${tomorrowStr}) "${payment.installment_desc}" için ${payment.amount} ₺ ödemeniz bulunmaktadır.`;
 
-        // Insert notification into database
-        db.prepare('INSERT INTO notifications (user_id, type, title, message) VALUES (?, ?, ?, ?)').run(
-          payment.user_id, 'installment_reminder', title, message
-        );
+        await db.collection('notifications').add({
+          user_id: payment.user_id,
+          type: 'installment_reminder',
+          title,
+          message,
+          is_read: 0,
+          created_at: new Date().toISOString()
+        });
 
         if (payment.user_email) {
           await sendInstallmentReminderEmail(

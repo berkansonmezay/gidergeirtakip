@@ -1,24 +1,26 @@
 import { Router } from 'express';
-import db from '../config/database.js';
+import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
 router.use(authenticateToken);
 
 // GET /api/categories
-router.get('/', (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const { type } = req.query;
-    let query = 'SELECT * FROM categories WHERE user_id = ?';
-    const params = [req.user.id];
+    let categoriesRef = db.collection('categories').where('user_id', '==', req.user.id);
 
     if (type) {
-      query += ' AND type = ?';
-      params.push(type);
+      categoriesRef = categoriesRef.where('type', '==', type);
     }
 
-    query += ' ORDER BY name ASC';
-    const categories = db.prepare(query).all(...params);
+    const snapshot = await categoriesRef.get();
+    const categories = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Sort in memory to avoid Firestore missing index error
+    categories.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
     res.json({ categories });
   } catch (err) {
     console.error('Categories list error:', err);
@@ -27,18 +29,26 @@ router.get('/', (req, res) => {
 });
 
 // POST /api/categories
-router.post('/', (req, res) => {
+router.post('/', async (req, res) => {
   try {
     const { name, type, icon, color } = req.body;
     if (!name || !type) {
       return res.status(400).json({ error: 'Kategori adı ve türü zorunludur.' });
     }
-    const result = db.prepare(`
-      INSERT INTO categories (name, type, icon, color, user_id, is_default)
-      VALUES (?, ?, ?, ?, ?, 0)
-    `).run(name, type, icon || '📁', color || '#6366f1', req.user.id);
 
-    const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(result.lastInsertRowid);
+    const newCategory = {
+      name,
+      type,
+      icon: icon || '📁',
+      color: color || '#6366f1',
+      user_id: req.user.id,
+      is_default: 0,
+      created_at: new Date().toISOString()
+    };
+
+    const docRef = await db.collection('categories').add(newCategory);
+    const category = { id: docRef.id, ...newCategory };
+
     res.status(201).json({ message: 'Kategori oluşturuldu.', category });
   } catch (err) {
     console.error('Category create error:', err);
@@ -47,23 +57,27 @@ router.post('/', (req, res) => {
 });
 
 // PUT /api/categories/:id
-router.put('/:id', (req, res) => {
+router.put('/:id', async (req, res) => {
   try {
     const { name, icon, color } = req.body;
     const id = req.params.id;
-    const existing = db.prepare('SELECT * FROM categories WHERE id = ? AND user_id = ?').get(id, req.user.id);
-    if (!existing) {
+    
+    const docRef = db.collection('categories').doc(id);
+    const doc = await docRef.get();
+
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
       return res.status(404).json({ error: 'Kategori bulunamadı.' });
     }
-    db.prepare('UPDATE categories SET name = ?, icon = ?, color = ? WHERE id = ?').run(
-      name || existing.name,
-      icon || existing.icon,
-      color || existing.color,
-      id
-    );
 
-    const category = db.prepare('SELECT * FROM categories WHERE id = ?').get(id);
-    res.json({ message: 'Kategori güncellendi.', category });
+    const updates = {};
+    if (name) updates.name = name;
+    if (icon) updates.icon = icon;
+    if (color) updates.color = color;
+
+    await docRef.update(updates);
+    
+    const updatedDoc = await docRef.get();
+    res.json({ message: 'Kategori güncellendi.', category: { id, ...updatedDoc.data() } });
   } catch (err) {
     console.error('Category update error:', err);
     res.status(500).json({ error: 'Kategori güncellenirken hata oluştu.' });
@@ -71,16 +85,29 @@ router.put('/:id', (req, res) => {
 });
 
 // DELETE /api/categories/:id
-router.delete('/:id', (req, res) => {
+router.delete('/:id', async (req, res) => {
   try {
-    const existing = db.prepare('SELECT * FROM categories WHERE id = ? AND user_id = ?').get(req.params.id, req.user.id);
-    if (!existing) {
+    const docRef = db.collection('categories').doc(req.params.id);
+    const doc = await docRef.get();
+
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
       return res.status(404).json({ error: 'Kategori bulunamadı.' });
     }
 
+    const batch = db.batch();
+
     // Set transactions to null category
-    db.prepare('UPDATE transactions SET category_id = NULL WHERE category_id = ?').run(req.params.id);
-    db.prepare('DELETE FROM categories WHERE id = ?').run(req.params.id);
+    const txSnapshot = await db.collection('transactions')
+      .where('category_id', '==', req.params.id)
+      .where('user_id', '==', req.user.id)
+      .get();
+      
+    txSnapshot.docs.forEach(txDoc => {
+      batch.update(txDoc.ref, { category_id: null });
+    });
+
+    batch.delete(docRef);
+    await batch.commit();
 
     res.json({ message: 'Kategori silindi.' });
   } catch (err) {
@@ -90,18 +117,23 @@ router.delete('/:id', (req, res) => {
 });
 
 // GET /api/categories/:id/stats
-router.get('/:id/stats', (req, res) => {
+router.get('/:id/stats', async (req, res) => {
   try {
-    const stats = db.prepare(`
-      SELECT 
-        COUNT(*) as transaction_count,
-        COALESCE(SUM(amount), 0) as total_amount,
-        COALESCE(AVG(amount), 0) as avg_amount
-      FROM transactions 
-      WHERE category_id = ? AND user_id = ?
-    `).get(req.params.id, req.user.id);
+    const txSnapshot = await db.collection('transactions')
+      .where('category_id', '==', req.params.id)
+      .where('user_id', '==', req.user.id)
+      .get();
 
-    res.json({ stats });
+    let total_amount = 0;
+    const transaction_count = txSnapshot.size;
+
+    txSnapshot.docs.forEach(doc => {
+      total_amount += doc.data().amount || 0;
+    });
+
+    const avg_amount = transaction_count > 0 ? total_amount / transaction_count : 0;
+
+    res.json({ stats: { transaction_count, total_amount, avg_amount } });
   } catch (err) {
     console.error('Category stats error:', err);
     res.status(500).json({ error: 'Kategori istatistikleri alınırken hata oluştu.' });
