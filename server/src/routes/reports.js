@@ -16,10 +16,9 @@ router.get('/monthly', async (req, res) => {
     const startDateAll = new Date(now.getFullYear(), now.getMonth() - parseInt(months) + 1, 1).toISOString().split('T')[0];
     const snapshot = await db.collection('transactions')
       .where('user_id', '==', req.user.id)
-      .where('date', '>=', startDateAll)
       .get();
       
-    const allTx = snapshot.docs.map(d => d.data());
+    const allTx = snapshot.docs.map(d => d.data()).filter(t => t.date >= startDateAll);
 
     const monthNames = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 
@@ -55,10 +54,12 @@ router.get('/category-breakdown', async (req, res) => {
     
     const snapshot = await db.collection('transactions')
       .where('user_id', '==', req.user.id)
-      .where('type', '==', type)
-      .where('date', '>=', sd)
-      .where('date', '<=', ed)
       .get();
+      
+    const docs = snapshot.docs.filter(doc => {
+      const t = doc.data();
+      return t.type === type && t.date >= sd && t.date <= ed;
+    });
       
     const categoryTotals = {};
     const categoryCounts = {};
@@ -66,7 +67,7 @@ router.get('/category-breakdown', async (req, res) => {
     
     let grandTotal = 0;
     
-    snapshot.docs.forEach(doc => {
+    docs.forEach(doc => {
       const t = doc.data();
       const cid = String(t.category_id);
       categoryIds.add(cid);
@@ -113,10 +114,9 @@ router.get('/trends', async (req, res) => {
     const startDateAll = new Date(now.getFullYear(), now.getMonth() - parseInt(months) + 1, 1).toISOString().split('T')[0];
     const snapshot = await db.collection('transactions')
       .where('user_id', '==', req.user.id)
-      .where('date', '>=', startDateAll)
       .get();
       
-    const allTx = snapshot.docs.map(d => d.data());
+    const allTx = snapshot.docs.map(d => d.data()).filter(t => t.date >= startDateAll);
     const monthNames = ['Oca','Şub','Mar','Nis','May','Haz','Tem','Ağu','Eyl','Eki','Kas','Ara'];
 
     for (let i = parseInt(months) - 1; i >= 0; i--) {
@@ -148,12 +148,10 @@ router.get('/top-expenses', async (req, res) => {
     
     const snapshot = await db.collection('transactions')
       .where('user_id', '==', req.user.id)
-      .where('type', '==', 'expense')
-      .where('date', '>=', sd)
-      .where('date', '<=', ed)
       .get();
       
-    const txs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+    const txs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
+      .filter(t => t.type === 'expense' && t.date >= sd && t.date <= ed);
     txs.sort((a, b) => Number(b.amount) - Number(a.amount));
     const topTxs = txs.slice(0, 5);
     

@@ -148,18 +148,26 @@ export default function Transactions() {
   const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
+  const totalIncome = filtered.reduce((sum, tx) => sum + (tx.type === 'income' ? tx.amount : 0), 0);
+  const totalExpense = filtered.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.amount : 0), 0);
+
   const exportToExcel = async () => {
     try {
       if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
       
       const data = filtered.map(tx => ({
         'Tarih': new Date(tx.date).toLocaleDateString('tr-TR'),
-        'Ödeme Yeri': tx.payee_name || '-',
+        'Harcama Yeri': tx.payee_name || '-',
         'Kategori': tx.category_name || '-',
         'Açıklama': tx.description || '-',
         'Gelir (₺)': tx.type === 'income' ? tx.amount : 0,
         'Gider (₺)': tx.type === 'expense' ? tx.amount : 0
       }));
+
+      data.push({
+        'Tarih': '', 'Harcama Yeri': '', 'Kategori': '', 'Açıklama': 'Genel Toplam:', 
+        'Gelir (₺)': totalIncome, 'Gider (₺)': totalExpense
+      });
 
       const ws = utils.json_to_sheet(data);
       const wb = utils.book_new();
@@ -202,11 +210,13 @@ export default function Transactions() {
       ]);
 
       autoTable(doc, {
-        head: [['Tarih', 'Ödeme Yeri', 'Kategori', 'Açıklama', 'Gelir', 'Gider']],
+        head: [['Tarih', 'Harcama Yeri', 'Kategori', 'Açıklama', 'Gelir', 'Gider']],
         body: tableData,
+        foot: [['', '', '', 'Genel Toplam:', formatMoney(totalIncome), formatMoney(totalExpense)]],
         startY: 20,
         styles: { font: 'Roboto', fontSize: 9 },
         headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+        footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
         columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' } }
       });
 
@@ -229,17 +239,19 @@ export default function Transactions() {
   const dateRangesMapped = ['Gecmis', 'Gecen Ay', 'Gecen 3 Ay', 'Gecen Ceyrek', 'Bugun', 'Bu Hafta', 'Bu Ay', 'Bu Ceyrek', '15 Gun', 'Gelecek 3 Ay'];
 
   return (
-    <div className="space-y-5 animate-fade-in">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>İşlemler</h2>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{total} kayıt bulundu</p>
+    <div className="animate-fade-in relative pb-10">
+      {/* Sticky Header Section */}
+      <div className="sticky top-0 z-30 pt-2 pb-5 -mt-2 mb-5" style={{ background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)' }}>
+        {/* Header */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
+          <div>
+            <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>İşlemler</h2>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{total} kayıt bulundu</p>
+          </div>
         </div>
-      </div>
 
-      {/* Filters Area */}
-      <div className="flex flex-col gap-3 relative">
+        {/* Filters Area */}
+        <div className="flex flex-col gap-3 relative">
         <div className="flex flex-col sm:flex-row gap-2 w-full">
           <div className="relative flex-1">
             <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
@@ -343,6 +355,7 @@ export default function Transactions() {
             </div>
           </div>
         )}
+        </div>
       </div>
 
       {/* Table */}
@@ -363,7 +376,7 @@ export default function Transactions() {
               <thead>
                 <tr style={{ background: 'var(--bg-secondary)', borderBottom: '1px solid var(--border)' }}>
                   <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Tarih</th>
-                  <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Ödeme Yeri</th>
+                  <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Harcama Yeri</th>
                   <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Kategori</th>
                   <th className="text-left text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Açıklama</th>
                   <th className="text-right text-xs font-semibold px-4 py-3" style={{ color: 'var(--text-muted)' }}>Gelir</th>
@@ -409,6 +422,14 @@ export default function Transactions() {
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr style={{ background: 'var(--bg-secondary)', borderTop: '2px solid var(--border)' }}>
+                  <td colSpan="4" className="px-4 py-4 text-right text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Genel Toplam:</td>
+                  <td className="px-4 py-4 text-sm font-bold text-right text-emerald-500">{formatMoney(totalIncome)}</td>
+                  <td className="px-4 py-4 text-sm font-bold text-right text-red-500">{formatMoney(totalExpense)}</td>
+                  <td></td>
+                </tr>
+              </tfoot>
             </table>
           </div>
           
@@ -548,7 +569,7 @@ function TransactionFormModal({ categories, payees, editItem, onClose, onSaved }
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Ödeme Yeri (Gider Yapılan)</label>
+              <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>Harcama Yeri</label>
               <select className="select" value={form.payee_id} onChange={(e) => setForm(f => ({ ...f, payee_id: e.target.value }))}>
                 <option value="">Seçiniz</option>
                 {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

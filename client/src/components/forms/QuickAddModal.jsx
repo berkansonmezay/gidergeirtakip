@@ -98,7 +98,7 @@ export default function QuickAddModal({ onClose, initialType }) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Ödeme Yeri</label>
+              <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Harcama Yeri</label>
               <select className="select" value={payeeId} onChange={(e) => setPayeeId(e.target.value)}>
                 <option value="">Seçiniz</option>
                 {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}

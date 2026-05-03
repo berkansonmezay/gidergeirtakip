@@ -3,6 +3,8 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Download, FileSpreadsheet } from 'lucide-react';
 import api from '../services/api';
 
+import { robotoBase64 } from '../utils/fonts/Roboto.js';
+
 const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22c55e','#14b8a6','#06b6d4','#3b82f6'];
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 
@@ -49,28 +51,53 @@ export default function Reports() {
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
       const doc = new jsPDF();
+
+      // Add custom font for Turkish characters
+      doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.setFont('Roboto');
+
       doc.setFontSize(18);
-      doc.text('Aile Butcesi Raporu', 14, 22);
+      doc.text('Aile Bütçesi Raporu', 14, 22);
       doc.setFontSize(10);
       doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
       // Monthly table
       doc.setFontSize(14);
-      doc.text('Aylik Gelir-Gider', 14, 42);
+      doc.text('Aylık Gelir-Gider', 14, 42);
+
+      const monthlyTotalIncome = monthlyData.reduce((s, d) => s + d.income, 0);
+      const monthlyTotalExpense = monthlyData.reduce((s, d) => s + d.expense, 0);
+      const monthlyTotalBalance = monthlyTotalIncome - monthlyTotalExpense;
+
       autoTable(doc, {
         startY: 46,
         head: [['Ay', 'Gelir', 'Gider', 'Bakiye']],
         body: monthlyData.map(d => [d.month, formatMoney(d.income), formatMoney(d.expense), formatMoney(d.balance)]),
-        styles: { fontSize: 9 },
+        foot: [['Toplam', formatMoney(monthlyTotalIncome), formatMoney(monthlyTotalExpense), formatMoney(monthlyTotalBalance)]],
+        styles: { font: 'Roboto', fontSize: 9 },
+        headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+        footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
       });
+
       // Category table
       const y2 = doc.lastAutoTable.finalY + 10;
       doc.setFontSize(14);
-      doc.text('Kategori Dagilimi', 14, y2);
+      doc.text('Kategori Dağılımı', 14, y2);
+
+      const catTotalAmount = categoryData.reduce((s, d) => s + d.total, 0);
+      const catTotalCount = categoryData.reduce((s, d) => s + d.count, 0);
+
       autoTable(doc, {
         startY: y2 + 4,
-        head: [['Kategori', 'Toplam', 'Islem', 'Yuzde']],
+        head: [['Kategori', 'Toplam', 'İşlem', 'Yüzde']],
         body: categoryData.map(d => [d.name, formatMoney(d.total), d.count, `${d.percentage}%`]),
-        styles: { fontSize: 9 },
+        foot: [['Toplam', formatMoney(catTotalAmount), catTotalCount, '100%']],
+        styles: { font: 'Roboto', fontSize: 9 },
+        headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+        footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+        columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' } },
       });
       doc.save(`Aile_Butcesi_Rapor_${new Date().toISOString().split('T')[0]}.pdf`);
     } catch (err) { console.error(err); }

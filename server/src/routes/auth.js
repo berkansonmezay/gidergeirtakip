@@ -107,7 +107,7 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ error: 'Refresh token süresi dolmuş.' });
     }
 
-    const userDoc = await db.collection('users').doc(stored.user_id).get();
+    const userDoc = await db.collection('users').doc(String(stored.user_id)).get();
     if (!userDoc.exists) {
       return res.status(401).json({ error: 'Kullanıcı bulunamadı.' });
     }

@@ -5,11 +5,25 @@ import api from '../services/api';
 
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 
-const EMOJI_OPTIONS = [
-  '🛒','🚗','💡','🏠','🏥','📚','👕','🎬','🍽️','📦','💰','💵','📈','🏢','🎁','✈️','🎮','🐾','💊','🏋️','📱','🎓','🔧','☕',
-  '🍦','🍔','🍕','🍺','🥤','🛍️','💎','💄','👠','🚲','🚇','🚕','🛋️','🧼','🚿','🛠️','🦷','👓','💆','🎨','🎭','🎡','⚽','🏀',
-  '🎾','🏐','🏊','💹','🏦','💳','💸','🔨','🪚','🪜','🌈','🌙','☀️','☁️','⚡','🔥','💦','🔋','🔌','💻','⌨️','🖱️','📷','🎥'
-];
+const EMOJI_CATEGORIES = {
+  '💰 Finans': ['💰','💵','💴','💶','💷','💸','💳','💎','🏦','📈','📉','📊','🧾','🪙','💹','🏧'],
+  '🍽️ Yeme & İçme': ['🍽️','🍔','🍕','🍝','🍜','🍣','🍰','🍩','🍦','🍫','🍿','☕','🍺','🍷','🥤','🧁','🥗','🌮','🥘','🍱'],
+  '🛒 Alışveriş': ['🛒','🛍️','🏪','🏬','🎁','📦','🧴','🧹','🧺','🧻','🧽','🧼'],
+  '🚗 Ulaşım': ['🚗','🚕','🚌','🚇','🚆','🚂','✈️','🚀','🛳️','🚲','🛵','🏍️','⛽','🅿️','🚁','🛸'],
+  '🏠 Ev & Yaşam': ['🏠','🏡','🏢','🛋️','🛏️','🚿','🛁','🪑','🪞','🧲','🔑','🔒','🪴','🏗️','🧱','💡'],
+  '🏥 Sağlık': ['🏥','💊','🩺','🩹','💉','🦷','👓','🧬','🩻','🩸','💆','🧘'],
+  '📚 Eğitim': ['📚','🎓','✏️','📝','📖','📐','🔬','🔭','🧪','🎒','📓','📌'],
+  '🎮 Eğlence': ['🎮','🎬','🎭','🎪','🎡','🎢','🎠','🎤','🎧','🎵','🎶','🎸','🎻','🎺','🥁','🎲','🎯','🎰'],
+  '⚽ Spor': ['⚽','🏀','🏈','⚾','🎾','🏐','🏓','🏸','🏊','🏋️','🤸','🚴','⛷️','🏄','🧗','🥊','🏆','🥇'],
+  '🐾 Evcil Hayvan': ['🐾','🐶','🐱','🐟','🐦','🐰','🐹','🦜','🐢','🦮'],
+  '👕 Giyim': ['👕','👔','👗','👠','👟','🧥','👜','👝','🎩','🧢','🕶️','💄','👑','💍'],
+  '🌿 Doğa': ['🌿','🌳','🌸','🌻','🌈','☀️','🌙','☁️','⚡','🔥','💧','❄️','🌊','🍀'],
+  '💻 Teknoloji': ['💻','📱','⌨️','🖱️','🖥️','📷','🎥','📹','🔋','🔌','📡','🛰️','🤖','🧮'],
+  '🔧 Tamir': ['🔧','🔨','🪚','🪜','🛠️','⚙️','🔩','🪛','🧰'],
+  '📁 Diğer': ['📁','📂','📋','📎','🗂️','🗃️','🗄️','🏷️','✅','❌','⭐','❤️','🔔','🎀','🕐','📅','🗓️','✉️','📮','🎗️'],
+};
+const EMOJI_CATEGORY_KEYS = Object.keys(EMOJI_CATEGORIES);
+const ALL_EMOJIS = Object.values(EMOJI_CATEGORIES).flat();
 
 export default function Categories() {
   const [categories, setCategories] = useState([]);
@@ -119,6 +133,9 @@ export default function Categories() {
 function CategoryFormModal({ editItem, onClose, onSaved }) {
   const [form, setForm] = useState({ name: editItem?.name || '', type: editItem?.type || 'expense', icon: editItem?.icon || '📁', color: editItem?.color || '#6366f1' });
   const [loading, setLoading] = useState(false);
+  const [emojiFilter, setEmojiFilter] = useState('');
+
+  const filteredEmojis = emojiFilter ? EMOJI_CATEGORIES[emojiFilter] : ALL_EMOJIS;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -154,9 +171,23 @@ function CategoryFormModal({ editItem, onClose, onSaved }) {
             </div>
           )}
           <div>
-            <label className="block text-sm font-medium mb-1" style={{ color: 'var(--text-secondary)' }}>İkon</label>
-            <div className="flex flex-wrap gap-2">
-              {EMOJI_OPTIONS.map(e => (
+            <label className="block text-sm font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>İkon</label>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              <button type="button" onClick={() => setEmojiFilter('')}
+                className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${!emojiFilter ? 'text-white' : 'hover:opacity-80'}`}
+                style={{ background: !emojiFilter ? 'var(--primary)' : 'var(--bg-secondary)', color: !emojiFilter ? 'white' : 'var(--text-secondary)' }}>
+                Tümü
+              </button>
+              {EMOJI_CATEGORY_KEYS.map(cat => (
+                <button key={cat} type="button" onClick={() => setEmojiFilter(cat)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium transition-all ${emojiFilter === cat ? 'text-white' : 'hover:opacity-80'}`}
+                  style={{ background: emojiFilter === cat ? 'var(--primary)' : 'var(--bg-secondary)', color: emojiFilter === cat ? 'white' : 'var(--text-secondary)' }}>
+                  {cat}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-1" style={{ scrollbarWidth: 'thin' }}>
+              {filteredEmojis.map(e => (
                 <button key={e} type="button" onClick={() => setForm(f => ({ ...f, icon: e }))} className={`w-10 h-10 rounded-lg text-lg flex items-center justify-center transition-all ${form.icon === e ? 'ring-2 ring-[var(--primary)] scale-110' : 'hover:bg-[var(--bg-secondary)]'}`}>{e}</button>
               ))}
             </div>

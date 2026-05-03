@@ -30,23 +30,31 @@ router.get('/', async (req, res) => {
     
     // 1. Fetch transactions
     let txRef = db.collection('transactions').where('user_id', '==', req.user.id);
-    if (type) txRef = txRef.where('type', '==', type);
-    if (category_id) txRef = txRef.where('category_id', '==', category_id);
-    if (payee_id) txRef = txRef.where('payee_id', '==', payee_id);
-    if (start_date) txRef = txRef.where('date', '>=', start_date);
-    if (end_date) txRef = txRef.where('date', '<=', end_date);
-    
     const txSnapshot = await txRef.get();
-    let allRecords = txSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data(), record_type: 'transaction' }));
+    
+    let allRecords = txSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data(), record_type: 'transaction' }))
+      .filter(t => {
+        if (type && t.type !== type) return false;
+        if (category_id && String(t.category_id) !== String(category_id)) return false;
+        if (payee_id && String(t.payee_id) !== String(payee_id)) return false;
+        if (start_date && t.date < start_date) return false;
+        if (end_date && t.date > end_date) return false;
+        return true;
+      });
     
     // 2. Fetch installments (to simulate the UNION ALL)
     let instRef = db.collection('installments').where('user_id', '==', req.user.id);
-    if (type) instRef = instRef.where('type', '==', type);
-    if (category_id) instRef = instRef.where('category_id', '==', category_id);
-    if (payee_id) instRef = instRef.where('payee_id', '==', payee_id);
-    
     const instSnapshot = await instRef.get();
-    const installments = instSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    const installments = instSnapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(i => {
+        if (type && i.type !== type) return false;
+        if (category_id && String(i.category_id) !== String(category_id)) return false;
+        if (payee_id && String(i.payee_id) !== String(payee_id)) return false;
+        return true;
+      });
     
     // We need to fetch installment_payments for these installments
     if (installments.length > 0) {
@@ -206,7 +214,7 @@ router.put('/:id', async (req, res) => {
     
     let category_name = null, category_icon = null, category_color = null, payee_name = null;
     if (tData.category_id) {
-      const cDoc = await db.collection('categories').doc(tData.category_id).get();
+      const cDoc = await db.collection('categories').doc(String(tData.category_id)).get();
       if (cDoc.exists) {
         const cData = cDoc.data();
         category_name = cData.name;
@@ -215,7 +223,7 @@ router.put('/:id', async (req, res) => {
       }
     }
     if (tData.payee_id) {
-      const pDoc = await db.collection('payees').doc(tData.payee_id).get();
+      const pDoc = await db.collection('payees').doc(String(tData.payee_id)).get();
       if (pDoc.exists) payee_name = pDoc.data().name;
     }
 
@@ -258,14 +266,17 @@ router.get('/summary', async (req, res) => {
 
     const snapshot = await db.collection('transactions')
       .where('user_id', '==', req.user.id)
-      .where('date', '>=', startDate)
-      .where('date', '<=', endDate)
       .get();
+      
+    const docs = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      return data.date >= startDate && data.date <= endDate;
+    });
       
     let totalIncome = 0;
     let totalExpense = 0;
     
-    snapshot.docs.forEach(doc => {
+    docs.forEach(doc => {
       const data = doc.data();
       if (data.type === 'income') totalIncome += Number(data.amount) || 0;
       if (data.type === 'expense') totalExpense += Number(data.amount) || 0;

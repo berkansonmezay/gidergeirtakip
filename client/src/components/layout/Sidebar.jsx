@@ -7,7 +7,7 @@ const menuItems = [
   { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
   { path: '/transactions', icon: ArrowLeftRight, label: 'İşlemler' },
   { path: '/categories', icon: Tags, label: 'Kategoriler' },
-  { path: '/payees', icon: MapPin, label: 'Ödeme Yerleri' },
+  { path: '/payees', icon: MapPin, label: 'Harcama Yerleri' },
   { path: '/installments/expense', icon: CreditCard, label: 'Ödeme Takvimi' },
   { path: '/installments/income', icon: Wallet, label: 'Tahsilat Takvimi' },
   { path: '/reports', icon: BarChart3, label: 'Raporlar' },

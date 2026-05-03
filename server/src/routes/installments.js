@@ -226,7 +226,7 @@ router.put('/payments/:paymentId/pay', async (req, res) => {
     await payRef.update({ is_paid: 1, paid_date: payDate });
 
     // Recalculate parent
-    const instId = payment.installment_id;
+    const instId = String(payment.installment_id);
     const instRef = db.collection('installments').doc(instId);
     const instDoc = await instRef.get();
     
@@ -266,7 +266,7 @@ router.put('/payments/:paymentId/unpay', async (req, res) => {
     await payRef.update({ is_paid: 0, paid_date: null });
 
     // Recalculate parent
-    const instId = payment.installment_id;
+    const instId = String(payment.installment_id);
     const instRef = db.collection('installments').doc(instId);
     const instDoc = await instRef.get();
     

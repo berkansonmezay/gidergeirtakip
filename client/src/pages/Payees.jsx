@@ -45,7 +45,7 @@ export default function Payees() {
     <div className="space-y-5 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Ödeme Yerleri</h2>
+          <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Harcama Yerleri</h2>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Gider yapılan kurum veya mağazalar</p>
         </div>
         <button onClick={() => { setEditItem(null); setName(''); setShowForm(true); }} className="btn btn-primary"><Plus size={18} /> Yeni Ekle</button>
@@ -76,7 +76,7 @@ export default function Payees() {
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowForm(false)}>
           <div className="modal-content p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{editItem ? 'Düzenle' : 'Yeni Ödeme Yeri'}</h3>
+              <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{editItem ? 'Düzenle' : 'Yeni Harcama Yeri'}</h3>
               <button onClick={() => setShowForm(false)} className="btn-icon btn-ghost"><X size={20} /></button>
             </div>
             <form onSubmit={handleSubmit} className="space-y-4">
