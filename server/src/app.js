@@ -21,7 +21,7 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174'], credentials: true }));
+app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174', 'https://ailebutcesi.vercel.app'], credentials: true }));
 app.use(express.json());
 app.use('/api', apiLimiter);
 
@@ -47,9 +47,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Sunucu hatası oluştu.' });
 });
 
-// Initialize Cron jobs and start
+// Initialize Cron jobs
 initializeCronJobs();
-app.listen(PORT, () => {
-  console.log(`\n🏠 Aile Bütçesi API - Port ${PORT}`);
-  console.log(`📡 http://localhost:${PORT}/api/health\n`);
-});
+
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(PORT, () => {
+    console.log(`\n🏠 Aile Bütçesi API - Port ${PORT}`);
+    console.log(`📡 http://localhost:${PORT}/api/health\n`);
+  });
+}
+
+export default app;
