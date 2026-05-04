@@ -261,7 +261,7 @@ export default function Savings() {
                         </div>
                       </div>
                     ) : (
-                      <button onClick={() => setAddAmountId(goal.id)} className="btn btn-secondary btn-sm w-full"><Plus size={14} /> Birikim Ekle</button>
+                      <button onClick={() => setAddAmountId(goal.id)} className="btn btn-secondary btn-sm w-full"><Plus size={14} /> Birikim Ekle / Çıkar</button>
                     )}
                   </div>
                 </div>
