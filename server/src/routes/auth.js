@@ -143,16 +143,77 @@ router.post('/logout', authenticateToken, async (req, res) => {
 
 // POST /api/auth/forgot-password
 router.post('/forgot-password', async (req, res) => {
-  const { email } = req.body;
-  const userSnapshot = await db.collection('users').where('email', '==', email).limit(1).get();
-  
-  if (!userSnapshot.empty) {
-    const user = { id: userSnapshot.docs[0].id, ...userSnapshot.docs[0].data() };
-    const resetToken = uuidv4();
-    console.log(`\n🔑 Şifre sıfırlama linki (${user.email}): http://localhost:5173/reset-password?token=${resetToken}\n`);
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ error: 'Email adresi gereklidir.' });
+
+    const userSnapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+    
+    // Always return success to prevent email enumeration
+    if (!userSnapshot.empty) {
+      const userDoc = userSnapshot.docs[0];
+      const resetToken = uuidv4();
+      const expiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000).toISOString(); // 1 hour
+
+      // Save token to database
+      await db.collection('password_resets').add({
+        user_id: userDoc.id,
+        token: resetToken,
+        expires_at: expiresAt
+      });
+
+      console.log(`\n🔑 Şifre sıfırlama linki (${email}): http://localhost:5173/reset-password?token=${resetToken}\n`);
+      // Here you would normally send an email using your SMTP settings
+    }
+    
+    res.json({ message: 'Eğer hesap mevcutsa, şifre sıfırlama bağlantısı gönderilecektir.' });
+  } catch (err) {
+    console.error('Forgot password error:', err);
+    res.status(500).json({ error: 'İşlem sırasında bir hata oluştu.' });
   }
-  
-  res.json({ message: 'Şifre sıfırlama bağlantısı email adresinize gönderildi.' });
+});
+
+// POST /api/auth/reset-password
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+
+    if (!token || !newPassword) {
+      return res.status(400).json({ error: 'Token ve yeni şifre gereklidir.' });
+    }
+
+    const errors = validatePassword(newPassword);
+    if (errors.length > 0) {
+      return res.status(400).json({ error: errors.join(' ') });
+    }
+
+    const resetSnapshot = await db.collection('password_resets').where('token', '==', token).limit(1).get();
+    if (resetSnapshot.empty) {
+      return res.status(400).json({ error: 'Geçersiz veya süresi dolmuş token.' });
+    }
+
+    const resetDoc = resetSnapshot.docs[0];
+    const resetData = resetDoc.data();
+
+    if (new Date(resetData.expires_at) < new Date()) {
+      await db.collection('password_resets').doc(resetDoc.id).delete();
+      return res.status(400).json({ error: 'Token süresi dolmuş.' });
+    }
+
+    // Update user password
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.collection('users').doc(resetData.user_id).update({
+      password_hash: passwordHash
+    });
+
+    // Delete used token
+    await db.collection('password_resets').doc(resetDoc.id).delete();
+
+    res.json({ message: 'Şifreniz başarıyla güncellendi.' });
+  } catch (err) {
+    console.error('Reset password error:', err);
+    res.status(500).json({ error: 'Şifre güncellenirken bir hata oluştu.' });
+  }
 });
 
 // GET /api/auth/me

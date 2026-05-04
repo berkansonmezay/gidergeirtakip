@@ -10,7 +10,7 @@ const menuItems = [
   { path: '/payees', icon: MapPin, label: 'Harcama Yerleri' },
   { path: '/installments/expense', icon: CreditCard, label: 'Ödeme Takvimi' },
   { path: '/installments/income', icon: Wallet, label: 'Tahsilat Takvimi' },
-  { path: '/reminders', icon: Calendar, label: 'Hatırlatıcılar' },
+  { path: '/calendar', icon: Calendar, label: 'Takvim' },
   { path: '/reports', icon: BarChart3, label: 'Raporlar' },
   { path: '/savings', icon: PiggyBank, label: 'Tasarruf' },
   { path: '/settings', icon: Settings, label: 'Ayarlar' },

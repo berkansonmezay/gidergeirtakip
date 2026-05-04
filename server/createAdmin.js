@@ -1,9 +1,19 @@
 import bcrypt from 'bcryptjs';
 import { db } from './src/config/firebase.js';
+import dotenv from 'dotenv';
+
+dotenv.config();
 
 async function createAdmin() {
   try {
-    const passwordHash = await bcrypt.hash('123', 12);
+    const adminPassword = process.env.ADMIN_INITIAL_PASSWORD;
+    
+    if (!adminPassword) {
+      console.error('❌ Hata: ADMIN_INITIAL_PASSWORD ortam değişkeni (.env) tanımlanmamış!');
+      process.exit(1);
+    }
+
+    const passwordHash = await bcrypt.hash(adminPassword, 12);
     const userRef = db.collection('users').doc();
     
     await userRef.set({
@@ -17,7 +27,7 @@ async function createAdmin() {
 
     console.log('✅ Admin kullanıcısı başarıyla oluşturuldu!');
     console.log('Kullanıcı adı: admin');
-    console.log('Şifre: 123');
+    console.log('Şifre: [.env dosyasındaki ADMIN_INITIAL_PASSWORD]');
     process.exit(0);
   } catch (error) {
     console.error('❌ Hata:', error);

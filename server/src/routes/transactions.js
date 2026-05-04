@@ -30,31 +30,30 @@ router.get('/', async (req, res) => {
     
     // 1. Fetch transactions
     let txRef = db.collection('transactions').where('user_id', '==', req.user.id);
+    
+    if (type) txRef = txRef.where('type', '==', type);
+    if (category_id) txRef = txRef.where('category_id', '==', String(category_id));
+    if (payee_id) txRef = txRef.where('payee_id', '==', String(payee_id));
+    
     const txSnapshot = await txRef.get();
     
     let allRecords = txSnapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data(), record_type: 'transaction' }))
       .filter(t => {
-        if (type && t.type !== type) return false;
-        if (category_id && String(t.category_id) !== String(category_id)) return false;
-        if (payee_id && String(t.payee_id) !== String(payee_id)) return false;
         if (start_date && t.date < start_date) return false;
         if (end_date && t.date > end_date) return false;
         return true;
       });
     
-    // 2. Fetch installments (to simulate the UNION ALL)
+    // 2. Fetch installments
     let instRef = db.collection('installments').where('user_id', '==', req.user.id);
+    if (type) instRef = instRef.where('type', '==', type);
+    if (category_id) instRef = instRef.where('category_id', '==', String(category_id));
+    if (payee_id) instRef = instRef.where('payee_id', '==', String(payee_id));
+    
     const instSnapshot = await instRef.get();
     
-    const installments = instSnapshot.docs
-      .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(i => {
-        if (type && i.type !== type) return false;
-        if (category_id && String(i.category_id) !== String(category_id)) return false;
-        if (payee_id && String(i.payee_id) !== String(payee_id)) return false;
-        return true;
-      });
+    const installments = instSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
     
     // We need to fetch installment_payments for these installments
     if (installments.length > 0) {

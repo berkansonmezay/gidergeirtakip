@@ -13,6 +13,7 @@ import Reports from './pages/Reports';
 import Savings from './pages/Savings';
 import Settings from './pages/Settings';
 import Payees from './pages/Payees';
+import Calendar from './pages/Calendar';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="reports" element={<Reports />} />
           <Route path="savings" element={<Savings />} />
           <Route path="payees" element={<Payees />} />
+          <Route path="calendar" element={<Calendar />} />
           <Route path="settings" element={<Settings />} />
         </Route>
 
