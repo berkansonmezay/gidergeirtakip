@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, Fragment } from 'react';
 import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Search, TrendingUp, TrendingDown, Clock, X } from 'lucide-react';
 import api from '../services/api';
 
@@ -55,8 +55,16 @@ export default function Calendar() {
     return d === 0 ? 6 : d - 1; 
   };
 
-  const prevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
-  const nextMonth = () => setCurrentDate(new Date(year, month + 1, 1));
+  const prevPeriod = () => {
+    if (view === 'day') setCurrentDate(new Date(year, month, currentDate.getDate() - 1));
+    else if (view === 'month') setCurrentDate(new Date(year, month - 1, 1));
+    else setCurrentDate(new Date(year - 1, 0, 1));
+  };
+  const nextPeriod = () => {
+    if (view === 'day') setCurrentDate(new Date(year, month, currentDate.getDate() + 1));
+    else if (view === 'month') setCurrentDate(new Date(year, month + 1, 1));
+    else setCurrentDate(new Date(year + 1, 0, 1));
+  };
   const today = () => setCurrentDate(new Date());
 
   const daysInMonth = getDaysInMonth(year, month);
@@ -180,6 +188,145 @@ export default function Calendar() {
     </div>
   );
 
+  const renderReportView = () => {
+    const reportData = {};
+    let grandTotal = 0;
+    
+    items.filter(i => i.type === 'expense').forEach(item => {
+      const payee = item.payee_name || 'Diğer Harcama Yeri';
+      const cat = item.category_name || 'Belirtilmemiş Kategori';
+      const m = new Date(item.date).getMonth();
+      
+      if (!reportData[payee]) reportData[payee] = { total: 0, categories: {} };
+      if (!reportData[payee].categories[cat]) reportData[payee].categories[cat] = { months: Array(12).fill(0), total: 0 };
+      
+      reportData[payee].categories[cat].months[m] += item.amount;
+      reportData[payee].categories[cat].total += item.amount;
+      reportData[payee].total += item.amount;
+      grandTotal += item.amount;
+    });
+
+    const payeesList = Object.keys(reportData).sort();
+
+    const formatNumber = (n) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+
+    return (
+      <div className="card overflow-x-auto shadow-sm p-0 md:p-4 animate-fade-in" style={{ backgroundColor: 'var(--bg-card)' }}>
+        <div className="min-w-max border border-gray-200 rounded-lg overflow-hidden">
+          <table className="w-full border-collapse text-[11px] font-sans">
+            <thead>
+              <tr className="bg-white">
+                <th className="p-2 border border-gray-300 text-left font-bold" style={{ width: '180px' }}></th>
+                {MONTHS.map(m => <th key={m} className="p-2 border border-gray-300 text-center text-red-600 font-bold min-w-[70px]">{m}</th>)}
+                <th className="p-2 border border-gray-300 text-center text-red-600 font-bold min-w-[80px]">Toplam</th>
+                <th className="p-2 border border-gray-300 text-center text-red-600 font-bold min-w-[80px]">Ara<br/>Toplam</th>
+              </tr>
+            </thead>
+            <tbody>
+              {payeesList.map(payee => {
+                const cats = Object.keys(reportData[payee].categories).sort();
+                return (
+                  <Fragment key={payee}>
+                    {/* Payee Header Row */}
+                    <tr style={{ backgroundColor: '#fdeadd' }}>
+                      <td className="p-2 border border-gray-300 font-bold text-red-600 text-center text-xs">{payee}</td>
+                      <td colSpan={13} className="border border-gray-300"></td>
+                      <td className="p-2 border border-gray-300 text-right font-bold text-emerald-600 text-xs">
+                        {formatNumber(reportData[payee].total)}
+                      </td>
+                    </tr>
+                    {/* Category Rows */}
+                    {cats.map(cat => {
+                      const rowData = reportData[payee].categories[cat];
+                      return (
+                        <tr key={cat} className="hover:bg-gray-50 transition-colors bg-white">
+                          <td className="p-2 pl-3 border border-gray-300 font-semibold text-gray-800">{cat}</td>
+                          {rowData.months.map((amt, i) => (
+                            <td key={i} className="p-2 border border-gray-300 text-right text-gray-600">
+                              {amt > 0 ? formatNumber(amt) : ''}
+                            </td>
+                          ))}
+                          <td className="p-2 border border-gray-300 text-right font-bold text-red-600">
+                            {formatNumber(rowData.total)}
+                          </td>
+                          <td className="border border-gray-300 bg-white"></td>
+                        </tr>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+              {/* Grand Total Row */}
+              <tr style={{ backgroundColor: '#fdeadd' }}>
+                <td colSpan={14} className="border border-gray-300 font-bold text-right text-red-600 p-2 text-xs">Genel Toplam</td>
+                <td className="p-2 border border-gray-300 text-right font-bold text-emerald-600 text-xs">
+                  {formatNumber(grandTotal)}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDayView = () => {
+    const dayItems = getItemsForDate(currentDate);
+    const inc = dayItems.filter(i => i.type === 'income').reduce((sum, i) => sum + i.amount, 0);
+    const exp = dayItems.filter(i => i.type === 'expense').reduce((sum, i) => sum + i.amount, 0);
+
+    return (
+      <div className="space-y-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="card p-4 border-l-4 border-l-emerald-500">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Günlük Toplam Gelir</p>
+            <p className="text-xl font-black text-emerald-600">{formatMoney(inc)}</p>
+          </div>
+          <div className="card p-4 border-l-4 border-l-red-500">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Günlük Toplam Gider</p>
+            <p className="text-xl font-black text-red-600">{formatMoney(exp)}</p>
+          </div>
+        </div>
+        <div className="card p-6 min-h-[400px]">
+          {dayItems.length > 0 ? (
+            <div className="space-y-4">
+              {dayItems.map((item, idx) => (
+                <div key={idx} className="flex items-center justify-between p-4 rounded-3xl bg-[var(--bg-secondary)]/40 hover:bg-[var(--bg-secondary)] transition-all group border border-[var(--border)]">
+                  <div className="flex items-center gap-4">
+                    <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl shadow-sm transition-transform group-hover:scale-110
+                      ${item.type === 'income' ? 'bg-emerald-500/10' : 'bg-red-500/10'}
+                    `}>
+                      {item.category_icon || '📁'}
+                    </div>
+                    <div>
+                      <p className="font-bold text-[var(--text-primary)]">{item.description || item.category_name}</p>
+                      <p className="text-[10px] text-[var(--text-muted)] font-black uppercase tracking-tighter mt-0.5">{item.category_name}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className={`text-lg font-black ${item.type === 'income' ? 'text-emerald-500' : 'text-red-500'}`}>
+                      {item.type === 'income' ? '+' : '-'}{formatMoney(item.amount)}
+                    </p>
+                    <p className="text-[10px] text-[var(--text-muted)] font-bold mt-1">
+                      {new Date(item.created_at).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 opacity-50">
+               <div className="w-20 h-20 bg-[var(--bg-secondary)] rounded-full flex items-center justify-center mb-4">
+                 <CalendarIcon size={40} className="text-[var(--text-muted)]" />
+               </div>
+               <p className="font-medium italic">Bu gün için işlem bulunmuyor.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-fade-in pb-10">
       {/* Top Header */}
@@ -189,29 +336,25 @@ export default function Calendar() {
             <CalendarIcon size={24} />
           </div>
           <div>
-            <h1 className="text-2xl font-black tracking-tight">{view === 'year' ? year : `${MONTHS[month]} ${year}`}</h1>
+            <h1 className="text-2xl font-black tracking-tight">
+              {view === 'day' ? currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }) : (view === 'year' || view === 'report') ? year : `${MONTHS[month]} ${year}`}
+            </h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <button onClick={prevMonth} className="p-1 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-muted)]"><ChevronLeft size={16}/></button>
-              <button onClick={today} className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-[var(--bg-secondary)] hover:bg-[var(--border)] rounded transition-colors">Bugün</button>
-              <button onClick={nextMonth} className="p-1 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-muted)]"><ChevronRight size={16}/></button>
+              <button onClick={prevPeriod} className="p-1 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-muted)]"><ChevronLeft size={16}/></button>
+              <button onClick={today} className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider bg-[var(--bg-secondary)] hover:bg-[var(--border)] rounded transition-colors">
+                {view === 'day' ? 'Bugün' : view === 'month' ? 'Bu Ay' : 'Bu Yıl'}
+              </button>
+              <button onClick={nextPeriod} className="p-1 hover:bg-[var(--bg-secondary)] rounded-md transition-colors text-[var(--text-muted)]"><ChevronRight size={16}/></button>
             </div>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" size={16} />
-            <input 
-              type="text" 
-              placeholder="İşlemlerde ara..." 
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl text-sm focus:ring-2 focus:ring-[var(--primary)] outline-none transition-all shadow-sm"
-            />
-          </div>
           <div className="flex bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-1 shadow-sm">
+            <button onClick={() => setView('day')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${view === 'day' ? 'gradient-primary text-white shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}>Gün</button>
             <button onClick={() => setView('month')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${view === 'month' ? 'gradient-primary text-white shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}>Ay</button>
             <button onClick={() => setView('year')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${view === 'year' ? 'gradient-primary text-white shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}>Yıl</button>
+            <button onClick={() => setView('report')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${view === 'report' ? 'gradient-primary text-white shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}>Rapor</button>
           </div>
         </div>
       </div>
@@ -241,7 +384,7 @@ export default function Calendar() {
         </div>
       ) : (
         <div className="animate-scale-in">
-          {view === 'month' ? renderMonthView() : renderYearView()}
+          {view === 'day' ? renderDayView() : view === 'month' ? renderMonthView() : view === 'year' ? renderYearView() : renderReportView()}
         </div>
       )}
 

@@ -275,7 +275,7 @@ export default function Transactions() {
             </button>
             <button 
               onClick={() => setShowFilters(!showFilters)}
-              className={`btn gap-2 transition-all ${showFilters ? 'bg-primary text-white shadow-md' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
+              className={`btn gap-2 transition-all ${showFilters ? 'bg-[var(--primary)] text-white shadow-md border-transparent' : 'bg-white border border-gray-200 text-gray-700 hover:bg-gray-50'}`}
             >
               <Filter size={18} /> <span className="hidden sm:inline">Filtreler</span>
             </button>
