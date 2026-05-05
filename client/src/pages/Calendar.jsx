@@ -191,6 +191,7 @@ export default function Calendar() {
   const renderReportView = () => {
     const reportData = {};
     let grandTotal = 0;
+    const monthTotals = Array(12).fill(0);
     
     items.filter(i => i.type === 'expense').forEach(item => {
       const payee = item.payee_name || 'Diğer Harcama Yeri';
@@ -203,6 +204,7 @@ export default function Calendar() {
       reportData[payee].categories[cat].months[m] += item.amount;
       reportData[payee].categories[cat].total += item.amount;
       reportData[payee].total += item.amount;
+      monthTotals[m] += item.amount;
       grandTotal += item.amount;
     });
 
@@ -258,7 +260,15 @@ export default function Calendar() {
               })}
               {/* Grand Total Row */}
               <tr className="bg-[var(--bg-secondary)]">
-                <td colSpan={14} className="border border-[var(--border)] font-bold text-right text-[var(--text-primary)] p-2 text-xs">Genel Toplam</td>
+                <td className="p-2 border border-[var(--border)] font-bold text-right text-[var(--text-primary)] text-xs">Genel Toplam</td>
+                {monthTotals.map((total, idx) => (
+                  <td key={idx} className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)] text-xs">
+                    {total > 0 ? formatNumber(total) : ''}
+                  </td>
+                ))}
+                <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)] text-xs">
+                  {formatNumber(grandTotal)}
+                </td>
                 <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                   {formatNumber(grandTotal)}
                 </td>
