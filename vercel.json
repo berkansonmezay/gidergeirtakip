@@ -11,10 +11,10 @@
       "use": "@vercel/node"
     }
   ],
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/server/src/app.js" },
-    { "source": "/assets/(.*)", "destination": "/client/assets/$1" },
-    { "source": "/(.*\\.(svg|ico|png|jpg|js|css))", "destination": "/client/$1" },
-    { "source": "/(.*)", "destination": "/client/index.html" }
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/server/src/app.js" },
+    { "src": "/assets/(.*)", "dest": "/client/assets/$1" },
+    { "src": "/(.*\\.(svg|ico|png|jpg|js|css))", "dest": "/client/$1" },
+    { "src": "/(.*)", "dest": "/client/index.html" }
   ]
 }
