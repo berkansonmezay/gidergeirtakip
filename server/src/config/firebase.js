@@ -23,12 +23,27 @@ if (process.env.FIREBASE_SERVICE_ACCOUNT) {
   }
 }
 
+let db;
+
 if (!admin.apps.length && serviceAccount) {
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount)
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount)
+    });
+    db = admin.firestore();
+  } catch (err) {
+    console.error('Firebase initialization failed:', err);
+  }
 }
 
-const db = admin.firestore();
+if (!db) {
+  console.warn('⚠️ WARNING: Firebase is NOT initialized. Database operations will fail. Please check FIREBASE_SERVICE_ACCOUNT environment variable.');
+  // Create a proxy that throws a clear error if the database is used without initialization
+  db = new Proxy({}, {
+    get: function(target, prop) {
+      throw new Error('Firebase Veritabanı bağlantısı kurulamadı. Lütfen Vercel üzerinden FIREBASE_SERVICE_ACCOUNT ortam değişkenini (environment variable) ayarlayın.');
+    }
+  });
+}
 
 export { admin, db };

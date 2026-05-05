@@ -28,7 +28,14 @@ app.use('/api', apiLimiter);
 
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Aile Bütçesi API çalışıyor! 🏠💰' });
+  res.json({ 
+    status: 'ok', 
+    message: 'Aile Bütçesi API çalışıyor! 🏠💰',
+    envStats: {
+      hasFirebaseEnv: !!process.env.FIREBASE_SERVICE_ACCOUNT,
+      hasJwtEnv: !!process.env.JWT_SECRET
+    }
+  });
 });
 
 // Routes
