@@ -17,7 +17,8 @@ const useAuthStore = create((set, get) => ({
       set({ user: data.user, isAuthenticated: true, loading: false });
       return data;
     } catch (err) {
-      const msg = err.response?.data?.error || 'Giriş başarısız.';
+      const errData = err.response?.data?.error;
+      const msg = typeof errData === 'string' ? errData : (errData?.message || 'Giriş başarısız.');
       set({ error: msg, loading: false });
       throw new Error(msg);
     }
