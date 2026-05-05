@@ -217,9 +217,9 @@ export default function Calendar() {
             <thead>
               <tr className="bg-[var(--bg-card)]">
                 <th className="p-2 border border-[var(--border)] text-left font-bold text-[var(--text-primary)]" style={{ width: '180px' }}></th>
-                {MONTHS.map(m => <th key={m} className="p-2 border border-[var(--border)] text-center text-[var(--expense)] font-bold min-w-[70px]">{m}</th>)}
-                <th className="p-2 border border-[var(--border)] text-center text-[var(--expense)] font-bold min-w-[80px]">Toplam</th>
-                <th className="p-2 border border-[var(--border)] text-center text-[var(--expense)] font-bold min-w-[80px]">Ara<br/>Toplam</th>
+                {MONTHS.map(m => <th key={m} className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[70px]">{m}</th>)}
+                <th className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[80px]">Toplam</th>
+                <th className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[80px]">Ara<br/>Toplam</th>
               </tr>
             </thead>
             <tbody>
@@ -228,8 +228,8 @@ export default function Calendar() {
                 return (
                   <Fragment key={payee}>
                     {/* Payee Header Row */}
-                    <tr className="bg-[var(--expense-light)]">
-                      <td className="p-2 border border-[var(--border)] font-bold text-[var(--expense)] text-center text-xs">{payee}</td>
+                    <tr className="bg-[var(--bg-secondary)]">
+                      <td className="p-2 border border-[var(--border)] font-bold text-[var(--text-primary)] text-center text-xs">{payee}</td>
                       <td colSpan={13} className="border border-[var(--border)]"></td>
                       <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                         {formatNumber(reportData[payee].total)}
@@ -257,8 +257,8 @@ export default function Calendar() {
                 );
               })}
               {/* Grand Total Row */}
-              <tr className="bg-[var(--expense-light)]">
-                <td colSpan={14} className="border border-[var(--border)] font-bold text-right text-[var(--expense)] p-2 text-xs">Genel Toplam</td>
+              <tr className="bg-[var(--bg-secondary)]">
+                <td colSpan={14} className="border border-[var(--border)] font-bold text-right text-[var(--text-primary)] p-2 text-xs">Genel Toplam</td>
                 <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                   {formatNumber(grandTotal)}
                 </td>
