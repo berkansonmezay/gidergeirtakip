@@ -212,14 +212,14 @@ export default function Calendar() {
 
     return (
       <div className="card overflow-x-auto shadow-sm p-0 md:p-4 animate-fade-in" style={{ backgroundColor: 'var(--bg-card)' }}>
-        <div className="min-w-max border border-gray-200 rounded-lg overflow-hidden">
+        <div className="min-w-max border border-[var(--border)] rounded-lg overflow-hidden">
           <table className="w-full border-collapse text-[11px] font-sans">
             <thead>
-              <tr className="bg-white">
-                <th className="p-2 border border-gray-300 text-left font-bold" style={{ width: '180px' }}></th>
-                {MONTHS.map(m => <th key={m} className="p-2 border border-gray-300 text-center text-red-600 font-bold min-w-[70px]">{m}</th>)}
-                <th className="p-2 border border-gray-300 text-center text-red-600 font-bold min-w-[80px]">Toplam</th>
-                <th className="p-2 border border-gray-300 text-center text-red-600 font-bold min-w-[80px]">Ara<br/>Toplam</th>
+              <tr className="bg-[var(--bg-card)]">
+                <th className="p-2 border border-[var(--border)] text-left font-bold text-[var(--text-primary)]" style={{ width: '180px' }}></th>
+                {MONTHS.map(m => <th key={m} className="p-2 border border-[var(--border)] text-center text-[var(--expense)] font-bold min-w-[70px]">{m}</th>)}
+                <th className="p-2 border border-[var(--border)] text-center text-[var(--expense)] font-bold min-w-[80px]">Toplam</th>
+                <th className="p-2 border border-[var(--border)] text-center text-[var(--expense)] font-bold min-w-[80px]">Ara<br/>Toplam</th>
               </tr>
             </thead>
             <tbody>
@@ -228,10 +228,10 @@ export default function Calendar() {
                 return (
                   <Fragment key={payee}>
                     {/* Payee Header Row */}
-                    <tr style={{ backgroundColor: '#fdeadd' }}>
-                      <td className="p-2 border border-gray-300 font-bold text-red-600 text-center text-xs">{payee}</td>
-                      <td colSpan={13} className="border border-gray-300"></td>
-                      <td className="p-2 border border-gray-300 text-right font-bold text-emerald-600 text-xs">
+                    <tr className="bg-[var(--expense-light)]">
+                      <td className="p-2 border border-[var(--border)] font-bold text-[var(--expense)] text-center text-xs">{payee}</td>
+                      <td colSpan={13} className="border border-[var(--border)]"></td>
+                      <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                         {formatNumber(reportData[payee].total)}
                       </td>
                     </tr>
@@ -239,17 +239,17 @@ export default function Calendar() {
                     {cats.map(cat => {
                       const rowData = reportData[payee].categories[cat];
                       return (
-                        <tr key={cat} className="hover:bg-gray-50 transition-colors bg-white">
-                          <td className="p-2 pl-3 border border-gray-300 font-semibold text-gray-800">{cat}</td>
+                        <tr key={cat} className="hover:bg-[var(--bg-secondary)] transition-colors bg-[var(--bg-card)]">
+                          <td className="p-2 pl-3 border border-[var(--border)] font-semibold text-[var(--text-primary)]">{cat}</td>
                           {rowData.months.map((amt, i) => (
-                            <td key={i} className="p-2 border border-gray-300 text-right text-gray-600">
+                            <td key={i} className="p-2 border border-[var(--border)] text-right text-[var(--text-secondary)]">
                               {amt > 0 ? formatNumber(amt) : ''}
                             </td>
                           ))}
-                          <td className="p-2 border border-gray-300 text-right font-bold text-red-600">
+                          <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)]">
                             {formatNumber(rowData.total)}
                           </td>
-                          <td className="border border-gray-300 bg-white"></td>
+                          <td className="border border-[var(--border)] bg-[var(--bg-card)]"></td>
                         </tr>
                       );
                     })}
@@ -257,9 +257,9 @@ export default function Calendar() {
                 );
               })}
               {/* Grand Total Row */}
-              <tr style={{ backgroundColor: '#fdeadd' }}>
-                <td colSpan={14} className="border border-gray-300 font-bold text-right text-red-600 p-2 text-xs">Genel Toplam</td>
-                <td className="p-2 border border-gray-300 text-right font-bold text-emerald-600 text-xs">
+              <tr className="bg-[var(--expense-light)]">
+                <td colSpan={14} className="border border-[var(--border)] font-bold text-right text-[var(--expense)] p-2 text-xs">Genel Toplam</td>
+                <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                   {formatNumber(grandTotal)}
                 </td>
               </tr>
