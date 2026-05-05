@@ -13,6 +13,7 @@ import savingsRoutes from './routes/savings.js';
 import familyRoutes from './routes/family.js';
 import payeeRoutes from './routes/payees.js';
 import notificationRoutes from './routes/notifications.js';
+import goldPricesRoutes from './routes/goldPrices.js';
 
 dotenv.config();
 
@@ -21,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 
 // Middleware
 app.use(helmet({ crossOriginResourcePolicy: false }));
-app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174', 'https://ailebutcesi.vercel.app'], credentials: true }));
+app.use(cors({ origin: ['http://localhost:5173', 'http://localhost:5174', 'https://ailebutcesi.vercel.app', 'https://gidergelirtakip.vercel.app'], credentials: true }));
 app.use(express.json());
 app.use('/api', apiLimiter);
 
@@ -40,6 +41,7 @@ app.use('/api/savings', savingsRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/payees', payeeRoutes);
 app.use('/api/notifications', notificationRoutes);
+app.use('/api/gold-prices', goldPricesRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

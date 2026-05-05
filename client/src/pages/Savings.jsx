@@ -1,11 +1,27 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Minus, PiggyBank, Target, Trash2, X, Edit3, History, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import { Plus, Minus, PiggyBank, Target, Trash2, X, Edit3, History, Download, FileText, FileSpreadsheet, TrendingUp, Coins, RefreshCw } from 'lucide-react';
 import api from '../services/api';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import * as XLSX from 'xlsx';
 import { robotoBase64 } from '../utils/fonts/Roboto.js';
+
+const GOLD_TYPES = ['Gr Altın', 'Çeyrek', 'Yarım', 'Tam', 'Cumhuriyet', 'Ata Lira'];
+const CURRENCY_TYPES = ['USD', 'EUR'];
+
+// Load saved gold prices from localStorage
+function loadGoldPrices() {
+  try {
+    const saved = localStorage.getItem('goldUnitPrices');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return {};
+}
+
+function saveGoldPrices(prices) {
+  try { localStorage.setItem('goldUnitPrices', JSON.stringify(prices)); } catch {}
+}
 
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 function formatValue(n, currency, metric) {
@@ -47,6 +63,43 @@ export default function Savings() {
   const [transType, setTransType] = useState('in'); // 'in' or 'out'
   const [transDate, setTransDate] = useState(new Date().toISOString().split('T')[0]);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { type: 'goal'|'history', id, historyId, title, message }
+  const [goldPrices, setGoldPrices] = useState(loadGoldPrices);
+
+  const updateGoldPrice = useCallback((type, value) => {
+    setGoldPrices(prev => {
+      const next = { ...prev, [type]: value };
+      saveGoldPrices(next);
+      return next;
+    });
+  }, []);
+
+  const [fetchingPrices, setFetchingPrices] = useState(false);
+  const fetchLiveGoldPrices = useCallback(async () => {
+    setFetchingPrices(true);
+    try {
+      const { data } = await api.get('/gold-prices');
+      if (data.prices) {
+        const newPrices = { ...goldPrices };
+        GOLD_TYPES.forEach(type => {
+          if (data.prices[type]) {
+            newPrices[type] = String(Math.round(data.prices[type].sell));
+          }
+        });
+        // Also fetch USD and EUR rates
+        CURRENCY_TYPES.forEach(type => {
+          if (data.prices[type]) {
+            newPrices[type] = String(data.prices[type].sell.toFixed(2));
+          }
+        });
+        setGoldPrices(newPrices);
+        saveGoldPrices(newPrices);
+      }
+    } catch (err) {
+      console.error('Gold prices fetch error:', err);
+      alert('Fiyatlar alınamadı. Lütfen daha sonra tekrar deneyin.');
+    }
+    setFetchingPrices(false);
+  }, [goldPrices]);
 
   const fetchGoals = async () => {
     try { 
@@ -118,8 +171,47 @@ export default function Savings() {
 
   const active = goals.filter(g => g.status === 'active');
   const completed = goals.filter(g => g.status === 'completed');
-  const totalSavedValue = goals.reduce((s, g) => s + (g.current_value || 0), 0);
-  const totalTargetValue = goals.reduce((s, g) => s + (g.target_amount * (g.current_value / g.current_amount || 0) || g.target_amount || 0), 0); // Simplified estimation
+
+  // Calculate total savings: use entered gold/currency prices when available, otherwise fallback to stored current_value
+  const totalSavingsCalculated = useMemo(() => {
+    let total = 0;
+    goals.forEach(g => {
+      if (g.status === 'deleted') return;
+      // Determine which gold type this account uses (stored in currency or metric)
+      const goldType = GOLD_TYPES.includes(g.currency) ? g.currency : (GOLD_TYPES.includes(g.metric) ? g.metric : null);
+      // Check for foreign currency (USD, EUR)
+      const currencyType = (!goldType && g.currency && CURRENCY_TYPES.includes(g.currency === '$' ? 'USD' : g.currency === '€' ? 'EUR' : g.currency)) 
+        ? (g.currency === '$' ? 'USD' : g.currency === '€' ? 'EUR' : g.currency) 
+        : null;
+      
+      if (goldType && goldPrices[goldType] && parseFloat(goldPrices[goldType]) > 0) {
+        // Use entered gold price × current amount
+        total += (g.current_amount || 0) * parseFloat(goldPrices[goldType]);
+      } else if (currencyType && goldPrices[currencyType] && parseFloat(goldPrices[currencyType]) > 0) {
+        // Use entered currency rate × current amount
+        total += (g.current_amount || 0) * parseFloat(goldPrices[currencyType]);
+      } else if ((!g.currency || g.currency === '₺') && !GOLD_TYPES.includes(g.metric)) {
+        // TL based account - use current_amount directly
+        total += (g.current_amount || 0);
+      } else {
+        // Fallback to stored current_value
+        total += (g.current_value || 0);
+      }
+    });
+    return total;
+  }, [goals, goldPrices]);
+
+  // Count how many gold prices are entered
+  const filledGoldPriceCount = GOLD_TYPES.filter(t => goldPrices[t] && parseFloat(goldPrices[t]) > 0).length;
+
+  // Total cost (sum of all current_value = actual investment/maliyet)
+  const totalCost = useMemo(() => {
+    return goals.filter(g => g.status !== 'deleted').reduce((s, g) => s + (g.current_value || 0), 0);
+  }, [goals]);
+
+  // Profit/Loss
+  const profitLoss = totalSavingsCalculated - totalCost;
+  const profitLossPercent = totalCost > 0 ? ((profitLoss / totalCost) * 100) : 0;
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -130,30 +222,103 @@ export default function Savings() {
         <button onClick={() => { setEditItem(null); setShowForm(true); }} className="btn btn-primary"><Plus size={18} /> Yeni Hesap</button>
       </div>
 
-      {/* Overall progress */}
-      {goals.length > 0 && (
-        <div className="card p-6 gradient-accent text-white">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
-            <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center">
-                <PiggyBank size={32} />
-              </div>
-              <div>
-                <p className="text-sm opacity-80 mb-1">Toplam Birikim</p>
-                <p className="text-3xl font-bold">{formatMoney(totalSavedValue)}</p>
-              </div>
+      {/* Gold Prices & Total Savings Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {/* Gold Prices Input Card - spans 2 columns */}
+        <div className="card p-3 animate-fade-in md:col-span-2" style={{ border: '1px solid var(--border)' }}>
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 rounded-lg flex items-center justify-center text-sm" style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)' }}>
+              🪙
             </div>
-            <div className="text-right">
-              <p className="text-sm opacity-80">Hedef</p>
-              <p className="text-lg font-semibold">{formatMoney(totalTargetValue)}</p>
+            <div className="flex-1">
+              <h3 className="font-bold text-xs" style={{ color: 'var(--text-primary)' }}>Güncel Altın & Döviz Fiyatları</h3>
+              <p className="text-[9px]" style={{ color: 'var(--text-muted)' }}>Birim TL değerlerini girin</p>
             </div>
+            <button
+              onClick={fetchLiveGoldPrices}
+              disabled={fetchingPrices}
+              className="flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold transition-all hover:opacity-80"
+              style={{ background: 'linear-gradient(135deg, #f59e0b, #d97706)', color: 'white', opacity: fetchingPrices ? 0.6 : 1 }}
+              title="Serbest piyasa verilerinden güncelle"
+            >
+              <RefreshCw size={11} className={fetchingPrices ? 'animate-spin' : ''} />
+              {fetchingPrices ? 'Yükleniyor...' : 'Güncelle'}
+            </button>
           </div>
-          <div className="w-full h-3 bg-white/20 rounded-full overflow-hidden">
-            <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${totalTargetValue > 0 ? Math.min((totalSavedValue / totalTargetValue) * 100, 100) : 0}%` }} />
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {GOLD_TYPES.map(type => (
+              <div key={type} className="flex items-center gap-2 px-1.5 py-1 rounded-md transition-all hover:bg-[var(--bg-secondary)]">
+                <span className="text-[11px] font-semibold w-20 shrink-0" style={{ color: 'var(--text-secondary)' }}>{type}</span>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    className="input text-xs py-1 pr-6 w-full"
+                    placeholder="0"
+                    value={goldPrices[type] || ''}
+                    onChange={(e) => updateGoldPrice(type, e.target.value)}
+                    style={{ fontSize: '11px', minHeight: 'unset', height: '28px' }}
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>₺</span>
+                </div>
+              </div>
+            ))}
           </div>
-          <p className="text-xs mt-2 opacity-70 text-right">{totalTargetValue > 0 ? Math.round((totalSavedValue / totalTargetValue) * 100) : 0}% tamamlandı</p>
+          {/* Divider */}
+          <div className="border-t my-1.5" style={{ borderColor: 'var(--border)' }} />
+          {/* Currency Rates */}
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            {CURRENCY_TYPES.map(type => (
+              <div key={type} className="flex items-center gap-2 px-1.5 py-1 rounded-md transition-all hover:bg-[var(--bg-secondary)]">
+                <span className="text-[11px] font-semibold w-20 shrink-0 flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+                  {type === 'USD' ? '💵' : '💶'} {type}
+                </span>
+                <div className="relative flex-1">
+                  <input
+                    type="number"
+                    className="input text-xs py-1 pr-6 w-full"
+                    placeholder="0"
+                    value={goldPrices[type] || ''}
+                    onChange={(e) => updateGoldPrice(type, e.target.value)}
+                    style={{ fontSize: '11px', minHeight: 'unset', height: '28px' }}
+                    step="0.01"
+                  />
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>₺</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      )}
+
+        {/* Total Savings Card */}
+        <div className="card p-3 animate-fade-in flex flex-col justify-center text-center" style={{ background: 'linear-gradient(135deg, #6366f1, #8b5cf6, #a78bfa)', border: 'none', animationDelay: '100ms' }}>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-2 text-center">
+            <p className="text-[10px] text-white/60 mb-0.5">Güncel Toplam Değer</p>
+            <p className="text-xl font-bold text-white tracking-tight">{formatMoney(totalSavingsCalculated)}</p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-xl p-3 mb-2 text-center">
+            <p className="text-[10px] text-white/60 mb-0.5">Toplam Maliyet</p>
+            <p className="text-base font-bold text-white/90 tracking-tight">{formatMoney(totalCost)}</p>
+          </div>
+          <div className="backdrop-blur-sm rounded-xl p-3 flex flex-col items-center text-center" style={{ background: profitLoss >= 0 ? 'rgba(16, 185, 129, 0.25)' : 'rgba(239, 68, 68, 0.25)' }}>
+            <div className="flex flex-col items-center mb-1">
+              <p className="text-[10px] text-white/60 mb-1">Kar / Zarar</p>
+              {totalCost > 0 && (
+                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${profitLoss >= 0 ? 'bg-emerald-500/30 text-emerald-200' : 'bg-red-500/30 text-red-200'}`}>
+                  {profitLoss >= 0 ? '▲' : '▼'} %{Math.abs(profitLossPercent).toFixed(1)}
+                </span>
+              )}
+            </div>
+            <p className={`text-base font-bold tracking-tight ${profitLoss >= 0 ? 'text-emerald-200' : 'text-red-200'}`}>
+              {profitLoss >= 0 ? '+' : ''}{formatMoney(profitLoss)}
+            </p>
+          </div>
+          {filledGoldPriceCount > 0 && (
+            <p className="text-[9px] mt-2 text-white/40 text-center">
+              ✓ Güncel altın fiyatları ile hesaplanıyor
+            </p>
+          )}
+        </div>
+      </div>
 
       {loading ? (
         <div className="flex justify-center py-12"><div className="w-8 h-8 border-3 rounded-full animate-spin" style={{ borderColor: 'var(--border)', borderTopColor: 'var(--primary)' }} /></div>
@@ -196,10 +361,21 @@ export default function Savings() {
                 <div className="mb-2">
                   <div className="flex justify-between text-sm mb-1">
                     <span style={{ color: 'var(--text-muted)' }}>Mevcut Birikim</span>
-                    <span className="font-bold" style={{ color: 'var(--text-primary)' }}>
-                      {formatValue(goal.current_amount, '', goal.metric || goal.unit)}
-                      {goal.currency && goal.currency !== '₺' && ` ${goal.currency}`}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-bold" style={{ color: 'var(--text-primary)' }}>
+                        {((!goal.currency || goal.currency === '₺') && !GOLD_TYPES.includes(goal.metric))
+                          ? formatMoney(goal.current_value || goal.current_amount)
+                          : goal.metric
+                            ? `${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0 }).format(goal.current_amount)} ${goal.metric}`
+                            : `${new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 0 }).format(goal.current_amount)} ${goal.currency}`
+                        }
+                      </span>
+                      {((goal.currency && goal.currency !== '₺') || GOLD_TYPES.includes(goal.metric)) && (
+                        <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                          {formatMoney(goal.current_value || 0)}
+                        </p>
+                      )}
+                    </div>
                   </div>
                   {goal.target_amount > 0 && (
                     <>
@@ -298,9 +474,11 @@ export default function Savings() {
 }
 
 function SavingsFormModal({ editItem, onClose, onSaved }) {
+  // Legacy: gold types were stored in metric. Migrate to currency on edit.
+  const editGoldInMetric = editItem?.metric && GOLD_TYPES.includes(editItem.metric);
   const [name, setName] = useState(editItem?.name || '');
-  const [currency, setCurrency] = useState(editItem?.currency || '₺');
-  const [metric, setMetric] = useState(editItem?.metric || '');
+  const [currency, setCurrency] = useState(editGoldInMetric ? editItem.metric : (editItem?.currency || '₺'));
+  const [metric, setMetric] = useState(editGoldInMetric ? '' : (editItem?.metric || ''));
   const [icon, setIcon] = useState(editItem?.icon || '🎯');
   const [emojiFilter, setEmojiFilter] = useState('');
   const [loading, setLoading] = useState(false);
@@ -349,10 +527,10 @@ function SavingsFormModal({ editItem, onClose, onSaved }) {
                   </button>
                 ))}
                 {/* Gold Units */}
-                {['Gr Altın', 'Çeyrek', 'Yarım', 'Tam', 'Cumhuriyet', 'Ata Lira'].map(u => (
-                  <button key={u} type="button" onClick={() => setMetric(u === metric ? '' : u)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${metric === u ? 'btn-primary' : 'bg-[var(--bg-secondary)]'}`}
-                    style={{ color: metric === u ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
+                {GOLD_TYPES.map(u => (
+                  <button key={u} type="button" onClick={() => setCurrency(u === currency ? '' : u)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${currency === u ? 'btn-primary' : 'bg-[var(--bg-secondary)]'}`}
+                    style={{ color: currency === u ? 'white' : 'var(--text-secondary)', border: '1px solid var(--border)' }}>
                     {u}
                   </button>
                 ))}
