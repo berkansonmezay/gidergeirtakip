@@ -92,7 +92,7 @@ export default function Installments() {
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            {activeTab === 'expense' ? 'Ödeme Takvimi' : 'Tahsilat Takvimi'}
+            {activeTab === 'expense' ? 'Taksitli Borçlar' : 'Taksitli Alacaklar'}
           </h2>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             {installments.length} kayıt • Toplam kalan tutar: {formatMoney(totalUpcoming)}
