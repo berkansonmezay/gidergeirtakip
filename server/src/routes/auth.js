@@ -21,7 +21,7 @@ function validatePassword(password) {
 async function generateTokens(user) {
   const accessToken = jwt.sign(
     { id: user.id, email: user.email, role: user.role, name: user.name },
-    process.env.JWT_SECRET,
+    process.env.JWT_SECRET || 'fallback-secret-for-development-only',
     { expiresIn: process.env.JWT_EXPIRES_IN || '15m' }
   );
 
