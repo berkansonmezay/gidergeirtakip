@@ -10,7 +10,7 @@ export const loginLimiter = rateLimit({
 
 export const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
+  max: 2000,
   message: { error: 'Çok fazla istek. Lütfen daha sonra tekrar deneyin.' },
   standardHeaders: true,
   legacyHeaders: false,
