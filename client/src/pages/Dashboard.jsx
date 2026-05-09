@@ -47,8 +47,6 @@ export default function Dashboard() {
     </div>
   );
 
-  const savingsRate = summary && summary.totalIncome > 0 ? Math.round(((summary.totalIncome - summary.totalExpense) / summary.totalIncome) * 100) : 0;
-
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Summary Cards */}
@@ -56,7 +54,7 @@ export default function Dashboard() {
         <SummaryCard icon={TrendingUp} label="Toplam Gelir" value={formatMoney(summary?.totalIncome || 0)} color="var(--income)" bg="gradient-income" delay={0} />
         <SummaryCard icon={TrendingDown} label="Toplam Gider" value={formatMoney(summary?.totalExpense || 0)} color="var(--expense)" bg="gradient-expense" delay={1} />
         <SummaryCard icon={Wallet} label="Kalan Bakiye" value={formatMoney(summary?.balance || 0)} color="var(--primary)" bg="gradient-primary" delay={2} />
-        <SummaryCard icon={PiggyBank} label="Tasarruf Oranı" value={`%${savingsRate}`} color="var(--secondary)" bg="gradient-accent" delay={3} />
+        <SummaryCard icon={PiggyBank} label="Toplam Tasarruf" value={formatMoney(summary?.totalSavings || 0)} color="var(--secondary)" bg="gradient-accent" delay={3} />
       </div>
 
       {/* Charts row */}

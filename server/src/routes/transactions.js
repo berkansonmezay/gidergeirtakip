@@ -267,10 +267,8 @@ router.get('/summary', async (req, res) => {
       .where('user_id', '==', req.user.id)
       .get();
       
-    const docs = snapshot.docs.filter(doc => {
-      const data = doc.data();
-      return data.date >= startDate && data.date <= endDate;
-    });
+    // Remove the strict monthly filter to show all-time totals on the summary cards
+    const docs = snapshot.docs;
       
     let totalIncome = 0;
     let totalExpense = 0;
@@ -281,12 +279,25 @@ router.get('/summary', async (req, res) => {
       if (data.type === 'expense') totalExpense += Number(data.amount) || 0;
     });
 
+    const savingsSnapshot = await db.collection('savings_goals')
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
+      .get();
+      
+    let totalSavings = 0;
+    savingsSnapshot.docs.forEach(doc => {
+      const g = doc.data();
+      if (g.status !== 'deleted') {
+        totalSavings += Number(g.current_value || 0);
+      }
+    });
+
     res.json({
       month: targetMonth,
       year: targetYear,
       totalIncome,
       totalExpense,
       balance: totalIncome - totalExpense,
+      totalSavings
     });
   } catch (err) {
     console.error('Summary error:', err);

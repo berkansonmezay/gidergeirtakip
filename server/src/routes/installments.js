@@ -246,7 +246,7 @@ router.put('/payments/:paymentId/pay', async (req, res) => {
     const instRef = db.collection('installments').doc(instId);
     const instDoc = await instRef.get();
     
-    if (instDoc.exists && instDoc.data().user_id === req.user.id) {
+    if (instDoc.exists && String(instDoc.data().user_id) === String(req.user.id)) {
       const inst = instDoc.data();
       
       const allPaySnap = await db.collection('installment_payments').where('installment_id', '==', instId).get();
@@ -261,6 +261,19 @@ router.put('/payments/:paymentId/pay', async (req, res) => {
         paid_count: paidCount,
         status: done ? 'completed' : 'active',
         next_payment_date: nextU ? nextU.due_date : inst.next_payment_date
+      });
+      
+      // CREATE TRANSACTION FOR DASHBOARD/REPORTS
+      await db.collection('transactions').add({
+        amount: Number(payment.amount),
+        description: inst.description + ` (${payment.payment_number}. Taksit)`,
+        date: payDate,
+        type: inst.type,
+        category_id: inst.category_id || null,
+        payee_id: inst.payee_id || null,
+        user_id: req.user.id,
+        created_at: new Date().toISOString(),
+        installment_payment_id: paymentId
       });
     }
 
@@ -286,7 +299,7 @@ router.put('/payments/:paymentId/unpay', async (req, res) => {
     const instRef = db.collection('installments').doc(instId);
     const instDoc = await instRef.get();
     
-    if (instDoc.exists && instDoc.data().user_id === req.user.id) {
+    if (instDoc.exists && String(instDoc.data().user_id) === String(req.user.id)) {
       const inst = instDoc.data();
       
       const allPaySnap = await db.collection('installment_payments').where('installment_id', '==', instId).get();
@@ -301,6 +314,12 @@ router.put('/payments/:paymentId/unpay', async (req, res) => {
         status: 'active',
         next_payment_date: nextU ? nextU.due_date : inst.next_payment_date
       });
+      
+      // DELETE RELATED TRANSACTION
+      const txSnap = await db.collection('transactions').where('installment_payment_id', '==', paymentId).get();
+      for (const doc of txSnap.docs) {
+        await db.collection('transactions').doc(doc.id).delete();
+      }
     }
 
     res.json({ message: 'Ödeme geri alındı.' });
