@@ -254,63 +254,68 @@ export default function Reports() {
           </div>
         </div>
 
-        <div className="card overflow-x-auto p-0 shadow-sm border border-[var(--border)]" style={{ backgroundColor: 'var(--bg-card)' }}>
-          <table className="w-full border-collapse text-[11px]">
-            <thead>
-              <tr className="bg-[var(--bg-secondary)]/50">
-                <th className="p-3 border-b border-r border-[var(--border)] text-left font-bold text-[var(--text-primary)] w-[180px]">Harcama Yeri / Kategori</th>
-                {MONTHS.map(m => <th key={m} className="p-3 border-b border-r border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[80px]">{m}</th>)}
-                <th className="p-3 border-b border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[90px]">Toplam</th>
-              </tr>
-            </thead>
-            <tbody>
-              {payeesList.map(payee => {
-                const cats = Object.keys(reportData[payee].categories).sort();
-                return (
-                  <Fragment key={payee}>
-                    <tr className="bg-[var(--bg-secondary)]/30">
-                      <td className="p-3 border-b border-r border-[var(--border)] font-black text-[var(--text-primary)]">{payee}</td>
-                      {reportData[payee].months.map((amt, i) => (
-                        <td key={i} className="p-3 border-b border-r border-[var(--border)] text-right font-bold text-emerald-600">
-                          {amt > 0 ? formatNumber(amt) : '-'}
-                        </td>
-                      ))}
-                      <td className="p-3 border-b border-[var(--border)] text-right font-black text-emerald-600 bg-emerald-500/5">
-                        {formatNumber(reportData[payee].total)}
-                      </td>
-                    </tr>
-                    {cats.map(cat => {
-                      const rowData = reportData[payee].categories[cat];
-                      return (
-                        <tr key={cat} className="hover:bg-[var(--bg-secondary)]/20 transition-colors">
-                          <td className="p-2 pl-6 border-b border-r border-[var(--border)] font-medium text-[var(--text-secondary)] italic">{cat}</td>
-                          {rowData.months.map((amt, i) => (
-                            <td key={i} className="p-2 border-b border-r border-[var(--border)] text-right text-[var(--text-muted)]">
-                              {amt > 0 ? formatNumber(amt) : ''}
-                            </td>
-                          ))}
-                          <td className="p-2 border-b border-[var(--border)] text-right font-bold text-red-400">
-                            {formatNumber(rowData.total)}
+        <div className="card overflow-x-auto shadow-sm p-0 md:p-4 animate-fade-in" style={{ backgroundColor: 'var(--bg-card)' }}>
+          <div className="min-w-max border border-[var(--border)] rounded-lg overflow-hidden">
+            <table className="w-full border-collapse text-[11px] font-sans">
+              <thead>
+                <tr className="bg-[var(--bg-card)]">
+                  <th className="p-2 border border-[var(--border)] text-left font-bold text-[var(--text-primary)]" style={{ width: '180px' }}></th>
+                  {MONTHS.map(m => <th key={m} className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[70px]">{m}</th>)}
+                  <th className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[80px]">Toplam</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payeesList.map(payee => {
+                  const cats = Object.keys(reportData[payee].categories).sort();
+                  return (
+                    <Fragment key={payee}>
+                      {/* Payee Header Row */}
+                      <tr className="bg-[var(--bg-secondary)]">
+                        <td className="p-2 border border-[var(--border)] font-bold text-[var(--text-primary)] text-center text-xs">{payee}</td>
+                        {reportData[payee].months.map((amt, i) => (
+                          <td key={i} className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
+                            {amt > 0 ? formatNumber(amt) : ''}
                           </td>
-                        </tr>
-                      );
-                    })}
-                  </Fragment>
-                );
-              })}
-              <tr className="bg-[var(--bg-secondary)] sticky bottom-0 z-10 shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-                <td className="p-4 border-r border-[var(--border)] font-black text-right text-sm">GENEL TOPLAM</td>
-                {monthTotals.map((total, idx) => (
-                  <td key={idx} className="p-4 border-r border-[var(--border)] text-right font-black text-red-500 text-sm">
-                    {total > 0 ? formatNumber(total) : '-'}
+                        ))}
+                        <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
+                          {formatNumber(reportData[payee].total)}
+                        </td>
+                      </tr>
+                      {/* Category Rows */}
+                      {cats.map(cat => {
+                        const rowData = reportData[payee].categories[cat];
+                        return (
+                          <tr key={cat} className="hover:bg-[var(--bg-secondary)] transition-colors bg-[var(--bg-card)]">
+                            <td className="p-2 pl-3 border border-[var(--border)] font-semibold text-[var(--text-primary)]">{cat}</td>
+                            {rowData.months.map((amt, i) => (
+                              <td key={i} className="p-2 border border-[var(--border)] text-right text-[var(--text-secondary)]">
+                                {amt > 0 ? formatNumber(amt) : ''}
+                              </td>
+                            ))}
+                            <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)]">
+                              {formatNumber(rowData.total)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  );
+                })}
+                {/* Grand Total Row */}
+                <tr className="bg-[var(--bg-secondary)]">
+                  <td className="p-2 border border-[var(--border)] font-bold text-right text-[var(--text-primary)] text-xs">Genel Toplam</td>
+                  {monthTotals.map((total, idx) => (
+                    <td key={idx} className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)] text-xs">
+                      {total > 0 ? formatNumber(total) : ''}
+                    </td>
+                  ))}
+                  <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)] text-xs">
+                    {formatNumber(grandTotal)}
                   </td>
-                ))}
-                <td className="p-4 bg-red-500 text-white text-right font-black text-sm">
-                  {formatNumber(grandTotal)}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     );
