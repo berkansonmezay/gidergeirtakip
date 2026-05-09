@@ -9,6 +9,12 @@ import api from '../services/api';
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 
+const formatDate = (date) => {
+  if (!date) return '';
+  const d = new Date(date);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const EVENT_TYPES = [
   { id: 'task', label: 'Görev', color: '#3b82f6', bg: 'bg-blue-500/10', text: 'text-blue-600', border: 'border-blue-500' },
   { id: 'event', label: 'Etkinlik', color: '#8b5cf6', bg: 'bg-purple-500/10', text: 'text-purple-600', border: 'border-purple-500' },
@@ -38,7 +44,7 @@ export default function Events() {
     title: '',
     description: '',
     type: 'task',
-    date: new Date().toISOString().split('T')[0],
+    date: formatDate(new Date()),
     time: '',
     recurrence: 'none',
     color: '#3b82f6'
@@ -91,7 +97,7 @@ export default function Events() {
       title: '',
       description: '',
       type: 'task',
-      date: d.toISOString().split('T')[0],
+      date: formatDate(d),
       time: '',
       recurrence: 'none',
       color: '#3b82f6'
@@ -152,7 +158,7 @@ export default function Events() {
           if (matchesRecurrence(event.date, curr, event.recurrence)) {
             result.push({
               ...event,
-              date: curr.toISOString().split('T')[0],
+              date: formatDate(curr),
               isInstance: true
             });
           }
@@ -165,7 +171,7 @@ export default function Events() {
   }, [events, currentDate, searchQuery]);
 
   const getEventsForDate = (date) => {
-    const dStr = date.toISOString().split('T')[0];
+    const dStr = formatDate(date);
     return expandedEvents.filter(e => e.date === dStr);
   };
 
@@ -254,7 +260,7 @@ export default function Events() {
     // Sort events by date
     const sortedEvents = [...expandedEvents].sort((a, b) => a.date.localeCompare(b.date));
     // Filter only future events for agenda
-    const todayStr = new Date().toISOString().split('T')[0];
+    const todayStr = formatDate(new Date());
     const agendaEvents = sortedEvents.filter(e => e.date >= todayStr).slice(0, 50);
 
     return (
@@ -495,21 +501,22 @@ export default function Events() {
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md animate-fade-in" onClick={() => setShowModal(false)}>
-          <div className="bg-[var(--bg-card)] w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-scale-in border border-[var(--border)]" onClick={e => e.stopPropagation()}>
-            <div className="p-8 border-b border-[var(--border)] flex justify-between items-start">
+        <div className="fixed inset-0 z-[1000] flex items-start justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-md animate-fade-in overflow-y-auto" onClick={() => setShowModal(false)}>
+          <div className="bg-[var(--bg-card)] w-full max-w-lg rounded-[32px] shadow-2xl overflow-hidden animate-scale-in border border-[var(--border)] flex flex-col mt-4 mb-4" onClick={e => e.stopPropagation()}>
+            <div className="px-8 py-6 border-b border-[var(--border)] flex justify-between items-center shrink-0 bg-[var(--bg-card)] sticky top-0 z-20">
               <div>
-                <h3 className="text-2xl font-black tracking-tight">
+                <h3 className="text-xl font-black tracking-tight" style={{ color: 'var(--text-primary)' }}>
                   {selectedEvent?.is_external ? 'Hatırlatıcı Detayı' : (selectedEvent ? 'Etkinliği Düzenle' : 'Yeni Etkinlik')}
                 </h3>
-                <p className="text-xs font-bold uppercase tracking-widest text-[var(--text-muted)] mt-1">
-                  {selectedEvent?.is_external ? 'Bu kayıt taksitli işlemlerden gelmektedir' : 'Planlarınızı yönetin'}
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mt-0.5">
+                  {selectedEvent?.is_external ? 'Otomatik Hatırlatıcı' : 'Planlarınızı yönetin'}
                 </p>
               </div>
-              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-[var(--bg-secondary)] rounded-full transition-colors text-[var(--text-muted)]"><X size={24}/></button>
+              <button onClick={() => setShowModal(false)} className="p-2 hover:bg-[var(--bg-secondary)] rounded-full transition-colors text-[var(--text-muted)]"><X size={20}/></button>
             </div>
             
-            <form onSubmit={handleSave} className="p-8 space-y-5">
+            <div className="flex-1">
+              <form onSubmit={handleSave} className="p-8 space-y-5">
               {selectedEvent?.is_external && (
                 <div className="p-4 bg-indigo-50 dark:bg-indigo-500/10 rounded-2xl border border-indigo-100 dark:border-indigo-500/20 mb-4">
                   <div className="flex gap-3 text-indigo-600 dark:text-indigo-400">
@@ -629,6 +636,7 @@ export default function Events() {
                 )}
               </div>
             </form>
+            </div>
           </div>
         </div>
       )}

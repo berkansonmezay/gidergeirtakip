@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { db } from '../config/firebase.js';
+import { db, admin } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = Router();
@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
       const categories = {};
       if (categoryIds.size > 0) {
         const catSnap = await db.collection('categories')
-          .where('__name__', 'in', Array.from(categoryIds).slice(0, 30))
+          .where(admin.firestore.FieldPath.documentId(), 'in', Array.from(categoryIds).slice(0, 30))
           .get();
         catSnap.docs.forEach(d => categories[d.id] = d.data());
       }
