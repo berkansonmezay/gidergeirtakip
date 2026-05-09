@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, CreditCard, Check, ChevronDown, ChevronUp, Trash2, X, Calendar, Bell, BellOff } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
@@ -19,14 +19,14 @@ export default function Installments() {
   const [payDateConfirmId, setPayDateConfirmId] = useState(null);
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
 
-  const fetchInstallments = async () => {
+  const fetchInstallments = useCallback(async () => {
     try {
       setLoading(true);
       const { data } = await api.get(`/installments?type=${activeTab}`);
       setInstallments(data.installments);
     } catch {}
     setLoading(false);
-  };
+  }, [activeTab]);
 
   useEffect(() => {
     fetchInstallments();
@@ -42,7 +42,7 @@ export default function Installments() {
       window.removeEventListener('installment-added', handleRefresh);
       window.removeEventListener('transaction-added', handleRefresh);
     };
-  }, []);
+  }, [activeTab, fetchInstallments]);
 
   const handlePay = async () => {
     if (!payDateConfirmId) return;
