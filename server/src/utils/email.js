@@ -1,9 +1,26 @@
 import nodemailer from 'nodemailer';
+import { db } from '../config/firebase.js';
 
 // Create a reusable transporter object using the default SMTP transport
 const createTransporter = async () => {
+  let smtpSettings = null;
+  try {
+    const doc = await db.collection('system_settings').doc('smtp').get();
+    if (doc.exists) {
+      smtpSettings = doc.data();
+    }
+  } catch (e) {
+    console.error('Failed to fetch SMTP settings from DB:', e);
+  }
+
+  const host = smtpSettings?.host || process.env.SMTP_HOST;
+  const user = smtpSettings?.user || process.env.SMTP_USER;
+  const pass = smtpSettings?.pass || process.env.SMTP_PASS;
+  const port = smtpSettings?.port || process.env.SMTP_PORT || 587;
+  const secure = smtpSettings?.port == 465 || process.env.SMTP_PORT == 465;
+
   // If SMTP is not configured, we can use ethereal email for testing
-  if (!process.env.SMTP_HOST || !process.env.SMTP_USER) {
+  if (!host || !user) {
     console.warn('⚠️ SMTP ayarları eksik. Test amaçlı Ethereal Email hesabı oluşturuluyor...');
     try {
       const testAccount = await nodemailer.createTestAccount();
@@ -35,12 +52,12 @@ const createTransporter = async () => {
 
   // Use configured SMTP
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: process.env.SMTP_PORT || 587,
-    secure: process.env.SMTP_PORT == 465, // true for 465, false for other ports
+    host: host,
+    port: port,
+    secure: secure,
     auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
+      user: user,
+      pass: pass,
     },
   });
 };
@@ -52,6 +69,10 @@ const getTransporter = async () => {
     transporterInstance = await createTransporter();
   }
   return transporterInstance;
+};
+
+export const resetTransporter = () => {
+  transporterInstance = null;
 };
 
 /**
@@ -79,11 +100,18 @@ export const sendInstallmentReminderEmail = async (toEmail, userName, installmen
     // keep original string if parsing fails
   }
 
-  // Format amount
   const formattedAmount = new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY' }).format(amount);
 
+  let smtpSettings = null;
+  try {
+    const doc = await db.collection('system_settings').doc('smtp').get();
+    if (doc.exists) smtpSettings = doc.data();
+  } catch (e) {}
+  
+  const fromAddress = smtpSettings?.from || process.env.SMTP_FROM || '"Aile Bütçesi" <noreply@ailebutcesi.local>';
+
   const mailOptions = {
-    from: process.env.SMTP_FROM || '"Aile Bütçesi" <noreply@ailebutcesi.local>',
+    from: fromAddress,
     to: toEmail,
     subject: `Hatırlatma: Yarın "${installmentDesc}" taksit ödemeniz var`,
     text: `Merhaba ${userName},\n\nYarın (${formattedDate}) tarihinde "${installmentDesc}" için ${formattedAmount} tutarında taksit ödemeniz bulunmaktadır.\n\nİyi günler dileriz.\nAile Bütçesi Uygulaması`,
@@ -117,7 +145,9 @@ export const sendInstallmentReminderEmail = async (toEmail, userName, installmen
     console.log(`📧 Hatırlatıcı e-postası gönderildi: ${toEmail} (${installmentDesc})`);
     
     // For Ethereal, log the preview URL
-    if (info.messageId && info.messageId !== 'dummy-id' && (!process.env.SMTP_HOST || !process.env.SMTP_USER)) {
+    const host = smtpSettings?.host || process.env.SMTP_HOST;
+    const user = smtpSettings?.user || process.env.SMTP_USER;
+    if (info.messageId && info.messageId !== 'dummy-id' && (!host || !user)) {
       console.log(`👀 E-postayı görüntüle: ${nodemailer.getTestMessageUrl(info)}`);
     }
   } catch (error) {

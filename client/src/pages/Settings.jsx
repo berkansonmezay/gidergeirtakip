@@ -4,6 +4,7 @@ import { Sun, Moon, User, Shield, Bell, Palette, X, Check, Lock } from 'lucide-r
 import useThemeStore from '../store/themeStore';
 import useAuthStore from '../store/authStore';
 import AdminUserManagement from '../components/settings/AdminUserManagement';
+import AdminSmtpSettings from '../components/settings/AdminSmtpSettings';
 import api from '../services/api';
 
 export default function Settings() {
@@ -57,7 +58,10 @@ export default function Settings() {
 
       {/* Admin User Management */}
       {user?.role === 'admin' && (
-        <AdminUserManagement />
+        <>
+          <AdminUserManagement />
+          <AdminSmtpSettings />
+        </>
       )}
 
       {/* Profile */}

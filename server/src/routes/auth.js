@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db } from '../config/firebase.js';
 import { loginLimiter } from '../middleware/rateLimit.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { resetTransporter } from '../utils/email.js';
 
 const router = Router();
 
@@ -307,6 +308,46 @@ router.put('/settings', authenticateToken, async (req, res) => {
     
     res.json({ message: 'Ayarlar güncellendi.' });
   } catch (err) { res.status(500).json({ error: 'Ayarlar güncellenirken hata oluştu.' }); }
+});
+
+// GET /api/auth/smtp-settings (Admin Only)
+router.get('/smtp-settings', authenticateToken, async (req, res) => {
+  try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok.' });
+    }
+    const doc = await db.collection('system_settings').doc('smtp').get();
+    const settings = doc.exists ? doc.data() : { host: '', port: 587, user: '', pass: '', from: '' };
+    // Passwords shouldn't be sent to frontend ideally, but since it's an admin panel to edit them, we can send it or send a placeholder. We'll send it for simplicity of editing.
+    res.json({ settings });
+  } catch (err) {
+    res.status(500).json({ error: 'SMTP ayarları alınırken hata oluştu.' });
+  }
+});
+
+// PUT /api/auth/smtp-settings (Admin Only)
+router.put('/smtp-settings', authenticateToken, async (req, res) => {
+  try {
+    if (req.user?.role !== 'admin') {
+      return res.status(403).json({ error: 'Bu işlem için yetkiniz yok.' });
+    }
+    const { host, port, user, pass, from } = req.body;
+    
+    await db.collection('system_settings').doc('smtp').set({
+      host: host || '',
+      port: Number(port) || 587,
+      user: user || '',
+      pass: pass || '',
+      from: from || ''
+    }, { merge: true });
+
+    // Reset transporter so next email uses new settings
+    resetTransporter();
+
+    res.json({ message: 'SMTP ayarları güncellendi.' });
+  } catch (err) {
+    res.status(500).json({ error: 'SMTP ayarları güncellenirken hata oluştu.' });
+  }
 });
 
 export default router;
