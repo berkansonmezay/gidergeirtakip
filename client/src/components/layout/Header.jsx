@@ -1,4 +1,4 @@
-import { Menu, Sun, Moon, Plus, Bell, User } from 'lucide-react';
+import { Menu, Sun, Moon, Plus, Bell, User, X } from 'lucide-react';
 import useThemeStore from '../../store/themeStore';
 import useAuthStore from '../../store/authStore';
 import useNotificationStore from '../../store/notificationStore';
