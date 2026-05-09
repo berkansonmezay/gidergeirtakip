@@ -4,7 +4,7 @@ import { LayoutDashboard, ArrowLeftRight, Tags, CreditCard, BarChart3, PiggyBank
 import useAuthStore from '../../store/authStore';
 
 const menuItems = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+  { path: '/', icon: LayoutDashboard, label: 'Kontrol Paneli' },
   { path: '/transactions', icon: ArrowLeftRight, label: 'İşlemler' },
   { path: '/categories', icon: Tags, label: 'Kategoriler' },
   { path: '/payees', icon: MapPin, label: 'Harcama Yerleri' },
