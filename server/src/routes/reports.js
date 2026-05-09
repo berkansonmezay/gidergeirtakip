@@ -49,7 +49,7 @@ router.get('/category-breakdown', async (req, res) => {
   try {
     const { type = 'expense', start_date, end_date } = req.query;
     const now = new Date();
-    const sd = start_date || new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
+    const sd = start_date || new Date(now.getFullYear(), now.getMonth() - 11, 1).toISOString().split('T')[0];
     const ed = end_date || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     
     const snapshot = await db.collection('transactions')
