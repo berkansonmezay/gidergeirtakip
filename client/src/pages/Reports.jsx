@@ -9,7 +9,7 @@ const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 
 export default function Reports() {
-  const [activeTab, setActiveTab] = useState('summary'); // summary, annual
+  const [activeTab, setActiveTab] = useState('summary'); // summary, annual, monthly
   const [monthlyData, setMonthlyData] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [trendData, setTrendData] = useState([]);
@@ -21,15 +21,28 @@ export default function Reports() {
   const [transactions, setTransactions] = useState([]);
   const [annualLoading, setAnnualLoading] = useState(false);
 
+  // Monthly Report State
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth());
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
+  const [monthlyTransactions, setMonthlyTransactions] = useState([]);
+  const [monthlyLoading, setMonthlyLoading] = useState(false);
+
+  // Trend Selection State
+  const [selectedCatTrend, setSelectedCatTrend] = useState('');
+  const [selectedPayeeTrend, setSelectedPayeeTrend] = useState('');
+
   useEffect(() => {
     fetchSummaryData();
   }, []);
 
   useEffect(() => {
-    if (activeTab === 'annual') {
+    if (activeTab === 'annual' || activeTab === 'monthly') {
       fetchAnnualData();
     }
-  }, [activeTab, year]);
+    if (activeTab === 'monthly') {
+      fetchMonthlyDetails();
+    }
+  }, [activeTab, year, selectedMonth, selectedYear]);
 
   const fetchSummaryData = async () => {
     setLoading(true);
@@ -62,6 +75,19 @@ export default function Reports() {
     setAnnualLoading(false);
   };
 
+  const fetchMonthlyDetails = async () => {
+    setMonthlyLoading(true);
+    try {
+      const startOfMonth = new Date(selectedYear, selectedMonth, 1).toISOString().split('T')[0];
+      const endOfMonth = new Date(selectedYear, selectedMonth + 1, 0).toISOString().split('T')[0];
+      const res = await api.get(`/transactions?start_date=${startOfMonth}&end_date=${endOfMonth}&limit=1000`);
+      setMonthlyTransactions(res.data.transactions || []);
+    } catch (err) {
+      console.error('Monthly details data error:', err);
+    }
+    setMonthlyLoading(false);
+  };
+
   const handleExportExcel = async () => {
     try {
       const XLSX = await import('xlsx');
@@ -72,9 +98,8 @@ export default function Reports() {
         XLSX.utils.book_append_sheet(wb, ws1, 'Aylık Rapor');
         const ws2 = XLSX.utils.json_to_sheet(categoryData.map(d => ({ Kategori: d.name, Toplam: d.total, İşlem: d.count, Yüzde: `${d.percentage}%` })));
         XLSX.utils.book_append_sheet(wb, ws2, 'Kategori Dağılımı');
-      } else {
-        // Annual report export logic can be added here if needed
-        const reportData = getAnnualReportData();
+      } else if (activeTab === 'annual') {
+        const { reportData } = getAnnualReportData();
         const exportData = [];
         Object.keys(reportData).sort().forEach(payee => {
           exportData.push({ HarcamaYeri: payee, ...reportData[payee].months.reduce((acc, amt, i) => ({ ...acc, [MONTHS[i]]: amt }), {}), Toplam: reportData[payee].total });
@@ -84,6 +109,12 @@ export default function Reports() {
         });
         const ws = XLSX.utils.json_to_sheet(exportData);
         XLSX.utils.book_append_sheet(wb, ws, 'Yıllık Gider Listesi');
+      } else {
+        const { catStats, payeeStats } = getMonthlyStats();
+        const ws1 = XLSX.utils.json_to_sheet(catStats.map(d => ({ Kategori: d.name, Tutar: d.value })));
+        XLSX.utils.book_append_sheet(wb, ws1, 'Kategori Bazlı Giderler');
+        const ws2 = XLSX.utils.json_to_sheet(payeeStats.map(d => ({ HarcamaYeri: d.name, Tutar: d.value })));
+        XLSX.utils.book_append_sheet(wb, ws2, 'Harcama Yeri Bazlı Giderler');
       }
       
       XLSX.writeFile(wb, `Aile_Butcesi_Rapor_${activeTab}_${new Date().toISOString().split('T')[0]}.xlsx`);
@@ -91,9 +122,8 @@ export default function Reports() {
   };
 
   const handleExportPDF = async () => {
-    // Keep the existing PDF logic for summary, or expand for annual
-    if (activeTab === 'annual') {
-      alert('Yıllık rapor PDF dışa aktarma yakında eklenecek. Şimdilik Excel kullanabilirsiniz.');
+    if (activeTab !== 'summary') {
+      alert('Bu rapor türü için PDF dışa aktarma yakında eklenecek. Şimdilik Excel kullanabilirsiniz.');
       return;
     }
     try {
@@ -166,6 +196,46 @@ export default function Reports() {
       grandTotal += item.amount;
     });
     return { reportData, monthTotals, grandTotal };
+  };
+
+  const getMonthlyStats = () => {
+    const cats = {};
+    const payees = {};
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    monthlyTransactions.forEach(t => {
+      if (t.type === 'income') {
+        totalIncome += t.amount;
+      } else {
+        totalExpense += t.amount;
+        const cname = t.category_name || 'Diğer';
+        const pname = t.payee_name || 'Diğer';
+        cats[cname] = (cats[cname] || 0) + t.amount;
+        payees[pname] = (payees[pname] || 0) + t.amount;
+      }
+    });
+
+    const catStats = Object.keys(cats).map(name => ({ name, value: cats[name] })).sort((a, b) => b.value - a.value);
+    const payeeStats = Object.keys(payees).map(name => ({ name, value: payees[name] })).sort((a, b) => b.value - a.value);
+
+    // Annual Trend Logic for the selected year
+    const catTrends = {};
+    const payeeTrends = {};
+    
+    transactions.filter(t => t.type === 'expense').forEach(t => {
+      const m = new Date(t.date).getMonth();
+      const cname = t.category_name || 'Diğer';
+      const pname = t.payee_name || 'Diğer';
+      
+      if (!catTrends[cname]) catTrends[cname] = Array(12).fill(0);
+      if (!payeeTrends[pname]) payeeTrends[pname] = Array(12).fill(0);
+      
+      catTrends[cname][m] += t.amount;
+      payeeTrends[pname][m] += t.amount;
+    });
+
+    return { catStats, payeeStats, totalIncome, totalExpense, balance: totalIncome - totalExpense, catTrends, payeeTrends };
   };
 
   const renderSummaryTab = () => (
@@ -321,6 +391,207 @@ export default function Reports() {
     );
   };
 
+  const renderMonthlyTab = () => {
+    const { catStats, payeeStats, totalIncome, totalExpense, balance, catTrends, payeeTrends } = getMonthlyStats();
+    
+    const catTrendItems = Object.keys(catTrends).sort();
+    const payeeTrendItems = Object.keys(payeeTrends).sort();
+
+    const catTrendData = (selectedCatTrend && catTrends[selectedCatTrend]) 
+      ? catTrends[selectedCatTrend].map((val, i) => ({ month: MONTHS[i], Tutar: val }))
+      : [];
+      
+    const payeeTrendData = (selectedPayeeTrend && payeeTrends[selectedPayeeTrend]) 
+      ? payeeTrends[selectedPayeeTrend].map((val, i) => ({ month: MONTHS[i], Tutar: val }))
+      : [];
+
+    if (monthlyLoading) return <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 rounded-full animate-spin border-indigo-500/20 border-t-indigo-500" /></div>;
+
+    return (
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex flex-col md:flex-row items-center justify-between bg-[var(--bg-card)] p-4 rounded-2xl border border-[var(--border)] shadow-sm gap-4">
+          <div className="flex items-center gap-3">
+            <select 
+              value={selectedMonth} 
+              onChange={e => setSelectedMonth(Number(e.target.value))}
+              className="px-4 py-2 rounded-xl bg-[var(--bg-secondary)] border-none text-sm font-bold focus:ring-2 ring-indigo-500/20"
+            >
+              {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+            </select>
+            <select 
+              value={selectedYear} 
+              onChange={e => setSelectedYear(Number(e.target.value))}
+              className="px-4 py-2 rounded-xl bg-[var(--bg-secondary)] border-none text-sm font-bold focus:ring-2 ring-indigo-500/20"
+            >
+              {[year - 2, year - 1, year, year + 1].map(y => <option key={y} value={y}>{y}</option>)}
+            </select>
+          </div>
+          <div className="grid grid-cols-3 gap-4 flex-1 w-full md:w-auto">
+            <div className="text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Gelir</p>
+              <p className="text-sm font-black text-emerald-500">{formatMoney(totalIncome)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Gider</p>
+              <p className="text-sm font-black text-red-500">{formatMoney(totalExpense)}</p>
+            </div>
+            <div className="text-center">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)]">Bakiye</p>
+              <p className={`text-sm font-black ${balance >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>{formatMoney(balance)}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card p-6">
+            <h3 className="text-base font-bold mb-6 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-indigo-500" />
+              Kategori Dağılımı ({MONTHS[selectedMonth]})
+            </h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie data={catStats} innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+                    {catStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                  </Pie>
+                  <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          <div className="card p-6">
+            <h3 className="text-base font-bold mb-6 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-red-500" />
+              Harcama Yeri Dağılımı ({MONTHS[selectedMonth]})
+            </h3>
+            <div className="h-[300px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={payeeStats} layout="vertical">
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                  <XAxis type="number" hide />
+                  <YAxis dataKey="name" type="category" width={100} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                  <Tooltip formatter={(v) => formatMoney(v)} cursor={{ fill: 'var(--bg-secondary)', opacity: 0.4 }} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+                  <Bar dataKey="value" fill="var(--primary)" radius={[0, 4, 4, 0]} barSize={20} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        <div className="card p-6">
+          <h3 className="text-base font-bold mb-6">En Çok Harcama Yapılan Yerler ({MONTHS[selectedMonth]})</h3>
+          <div className="space-y-3">
+            {payeeStats.slice(0, 10).map((p, i) => (
+              <div key={i} className="flex items-center justify-between p-3 rounded-xl bg-[var(--bg-secondary)]/30 hover:bg-[var(--bg-secondary)]/50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <span className="w-6 h-6 flex items-center justify-center rounded-lg bg-[var(--bg-card)] text-[10px] font-black border border-[var(--border)]">{i + 1}</span>
+                  <span className="text-sm font-bold text-[var(--text-primary)]">{p.name}</span>
+                </div>
+                <div className="flex items-center gap-4">
+                  <div className="w-32 h-1.5 bg-[var(--border)] rounded-full overflow-hidden hidden sm:block">
+                    <div className="h-full bg-red-500/60" style={{ width: `${(p.value / payeeStats[0].value) * 100}%` }} />
+                  </div>
+                  <span className="text-sm font-black text-red-500">{formatMoney(p.value)}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Category Trend Section */}
+        <div className="card p-6 border-2 border-indigo-500/10">
+          <h3 className="text-lg font-black flex items-center gap-2 mb-6">
+            <Clock className="text-indigo-500" size={20} />
+            Yıllık Kategori Trendi
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="md:col-span-1 space-y-2">
+              <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider pl-1">Kategori Seçin</p>
+              <div className="flex flex-col gap-1 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar border border-[var(--border)] rounded-xl p-1">
+                {catTrendItems.map(item => (
+                  <button
+                    key={item}
+                    onClick={() => setSelectedCatTrend(item)}
+                    className={`text-left px-3 py-2 rounded-lg text-[11px] font-bold transition-all ${selectedCatTrend === item ? 'bg-indigo-500 text-white shadow-lg scale-[1.02]' : 'bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] text-[var(--text-primary)]'}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="md:col-span-3">
+              {selectedCatTrend ? (
+                <div className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={catTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                      <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `${(v/1000).toFixed(1)}K`} />
+                      <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+                      <Bar dataKey="Tutar" fill="#6366f1" radius={[6, 6, 0, 0]}>
+                        {catTrendData.map((entry, index) => <Cell key={`cell-${index}`} fill={index === selectedMonth ? '#4f46e5' : '#818cf8'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[250px] flex flex-col items-center justify-center bg-[var(--bg-secondary)]/20 rounded-3xl border-2 border-dashed border-[var(--border)]">
+                  <p className="text-sm font-bold text-[var(--text-muted)]">Kategori seçiniz</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Payee Trend Section */}
+        <div className="card p-6 border-2 border-rose-500/10">
+          <h3 className="text-lg font-black flex items-center gap-2 mb-6">
+            <Clock className="text-rose-500" size={20} />
+            Yıllık Harcama Yeri Trendi
+          </h3>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+            <div className="md:col-span-1 space-y-2">
+              <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-wider pl-1">Harcama Yeri Seçin</p>
+              <div className="flex flex-col gap-1 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar border border-[var(--border)] rounded-xl p-1">
+                {payeeTrendItems.map(item => (
+                  <button
+                    key={item}
+                    onClick={() => setSelectedPayeeTrend(item)}
+                    className={`text-left px-3 py-2 rounded-lg text-[11px] font-bold transition-all ${selectedPayeeTrend === item ? 'bg-rose-500 text-white shadow-lg scale-[1.02]' : 'bg-[var(--bg-secondary)]/50 hover:bg-[var(--bg-secondary)] text-[var(--text-primary)]'}`}
+                  >
+                    {item}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="md:col-span-3">
+              {selectedPayeeTrend ? (
+                <div className="h-[250px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={payeeTrendData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                      <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `${(v/1000).toFixed(1)}K`} />
+                      <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
+                      <Bar dataKey="Tutar" fill="#f43f5e" radius={[6, 6, 0, 0]}>
+                        {payeeTrendData.map((entry, index) => <Cell key={`cell-${index}`} fill={index === selectedMonth ? '#e11d48' : '#fb7185'} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="h-[250px] flex flex-col items-center justify-center bg-[var(--bg-secondary)]/20 rounded-3xl border-2 border-dashed border-[var(--border)]">
+                  <p className="text-sm font-bold text-[var(--text-muted)]">Harcama yeri seçiniz</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
   if (loading) return <div className="flex justify-center py-32"><div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" /></div>;
 
   return (
@@ -350,10 +621,16 @@ export default function Reports() {
         >
           Yıllık Gider Listesi
         </button>
+        <button 
+          onClick={() => setActiveTab('monthly')}
+          className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 ${activeTab === 'monthly' ? 'bg-[var(--bg-card)] text-[var(--primary)] shadow-md translate-y-0' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+        >
+          Aylık Gider Raporu
+        </button>
       </div>
 
       <div className="min-h-[600px]">
-        {activeTab === 'summary' ? renderSummaryTab() : renderAnnualTab()}
+        {activeTab === 'summary' ? renderSummaryTab() : activeTab === 'annual' ? renderAnnualTab() : renderMonthlyTab()}
       </div>
     </div>
   );
