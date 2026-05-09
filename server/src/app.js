@@ -14,6 +14,7 @@ import familyRoutes from './routes/family.js';
 import payeeRoutes from './routes/payees.js';
 import notificationRoutes from './routes/notifications.js';
 import goldPricesRoutes from './routes/goldPrices.js';
+import eventRoutes from './routes/events.js';
 
 dotenv.config();
 
@@ -49,6 +50,7 @@ app.use('/api/family', familyRoutes);
 app.use('/api/payees', payeeRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/gold-prices', goldPricesRoutes);
+app.use('/api/events', eventRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

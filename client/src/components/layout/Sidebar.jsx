@@ -11,6 +11,7 @@ const menuItems = [
   { path: '/installments/expense', icon: CreditCard, label: 'Taksitli Borçlar' },
   { path: '/installments/income', icon: Wallet, label: 'Taksitli Alacaklar' },
   { path: '/calendar', icon: Calendar, label: 'Takvim' },
+  { path: '/events', icon: Calendar, label: 'Etkinlikler' },
   { path: '/reports', icon: BarChart3, label: 'Raporlar' },
   { path: '/savings', icon: PiggyBank, label: 'Tasarruf' },
   { path: '/settings', icon: Settings, label: 'Ayarlar' },
