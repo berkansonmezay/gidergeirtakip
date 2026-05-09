@@ -198,11 +198,12 @@ export default function Calendar() {
       const cat = item.category_name || 'Belirtilmemiş Kategori';
       const m = new Date(item.date).getMonth();
       
-      if (!reportData[payee]) reportData[payee] = { total: 0, categories: {} };
+      if (!reportData[payee]) reportData[payee] = { total: 0, categories: {}, months: Array(12).fill(0) };
       if (!reportData[payee].categories[cat]) reportData[payee].categories[cat] = { months: Array(12).fill(0), total: 0 };
       
       reportData[payee].categories[cat].months[m] += item.amount;
       reportData[payee].categories[cat].total += item.amount;
+      reportData[payee].months[m] += item.amount;
       reportData[payee].total += item.amount;
       monthTotals[m] += item.amount;
       grandTotal += item.amount;
@@ -232,7 +233,14 @@ export default function Calendar() {
                     {/* Payee Header Row */}
                     <tr className="bg-[var(--bg-secondary)]">
                       <td className="p-2 border border-[var(--border)] font-bold text-[var(--text-primary)] text-center text-xs">{payee}</td>
-                      <td colSpan={13} className="border border-[var(--border)]"></td>
+                      {reportData[payee].months.map((amt, i) => (
+                        <td key={i} className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
+                          {amt > 0 ? formatNumber(amt) : ''}
+                        </td>
+                      ))}
+                      <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
+                        {formatNumber(reportData[payee].total)}
+                      </td>
                       <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                         {formatNumber(reportData[payee].total)}
                       </td>
