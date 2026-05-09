@@ -9,7 +9,7 @@ router.get('/', async (req, res) => {
   try {
     console.log('Fetching goals for user:', req.user.id);
     const snapshot = await db.collection('savings_goals')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', '==', String(req.user.id))
       .get();
       
     const goals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -35,7 +35,7 @@ router.post('/', async (req, res) => {
       currency: currency || '₺',
       metric: metric || '',
       deadline: deadline || null,
-      user_id: req.user.id,
+      user_id: String(req.user.id),
       status: 'active',
       created_at: new Date().toISOString()
     };
@@ -50,7 +50,7 @@ router.put('/:id', async (req, res) => {
     const docRef = db.collection('savings_goals').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || doc.data().user_id !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     
@@ -125,7 +125,7 @@ router.get('/:id/history', async (req, res) => {
     const docRef = db.collection('savings_goals').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || doc.data().user_id !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     
@@ -139,7 +139,7 @@ router.delete('/:id', async (req, res) => {
   try {
     const docRef = db.collection('savings_goals').doc(req.params.id);
     const doc = await docRef.get();
-    if (!doc.exists || doc.data().user_id !== req.user.id) return res.status(404).json({ error: 'Bulunamadı.' });
+    if (!doc.exists || doc.data().user_id !== String(req.user.id)) return res.status(404).json({ error: 'Bulunamadı.' });
     await docRef.delete();
     res.json({ message: 'Silindi.' });
   } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
@@ -150,7 +150,7 @@ router.delete('/:id/history/:historyId', async (req, res) => {
     const goalRef = db.collection('savings_goals').doc(req.params.id);
     const goalDoc = await goalRef.get();
     
-    if (!goalDoc.exists || goalDoc.data().user_id !== req.user.id) {
+    if (!goalDoc.exists || goalDoc.data().user_id !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     
