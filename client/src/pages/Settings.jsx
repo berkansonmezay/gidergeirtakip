@@ -109,9 +109,18 @@ export default function Settings() {
           )}
 
           <div className="flex items-center justify-between pt-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Rol:</span>
-              <span className="badge badge-income">{user?.role === 'family_admin' ? '👑 Aile Yöneticisi' : user?.role === 'admin' ? '🛡️ Admin' : '👤 Kullanıcı'}</span>
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Rol:</span>
+                <span className="badge badge-income">{user?.role === 'family_admin' ? '👑 Aile Yöneticisi' : user?.role === 'admin' ? '🛡️ Admin' : '👤 Kullanıcı'}</span>
+              </div>
+              <button 
+                type="button"
+                onClick={() => setShowPasswordModal(true)} 
+                className="text-xs font-bold text-indigo-500 hover:text-indigo-600 transition-colors flex items-center gap-1.5"
+              >
+                <Lock size={14} /> Şifre Değiştir
+              </button>
             </div>
             <button 
               type="submit" 
@@ -150,23 +159,6 @@ export default function Settings() {
               <option value="USD">$ USD</option>
               <option value="EUR">€ EUR</option>
             </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Security */}
-      <div className="card p-5">
-        <div className="flex items-center gap-3 mb-4">
-          <Shield size={20} style={{ color: 'var(--primary)' }} />
-          <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Güvenlik</h3>
-        </div>
-        <div className="space-y-3">
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Şifre Değiştir</p>
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Hesap şifrenizi güncelleyin</p>
-            </div>
-            <button onClick={() => setShowPasswordModal(true)} className="btn btn-secondary btn-sm">Değiştir</button>
           </div>
         </div>
       </div>
