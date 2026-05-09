@@ -41,6 +41,11 @@ export const initializeCronJobs = () => {
         }
         
         const installment = instDoc.data();
+
+        // Check if reminder is enabled for THIS installment
+        if (!installment.reminder_enabled) {
+          continue;
+        }
         
         const userRef = db.collection('users').doc(String(installment.user_id));
         const userDoc = await userRef.get();
@@ -56,7 +61,8 @@ export const initializeCronJobs = () => {
           installment_desc: installment.description,
           user_id: userDoc.id,
           user_name: user.name,
-          user_email: user.email
+          user_email: user.email,
+          user_settings: user.notification_settings || { email_reminders: true, push_notifications: true }
         });
       }
 
@@ -71,16 +77,20 @@ export const initializeCronJobs = () => {
         const title = 'Taksit Ödeme Hatırlatması';
         const message = `Yarın (${tomorrowStr}) "${payment.installment_desc}" için ${payment.amount} ₺ ödemeniz bulunmaktadır.`;
 
-        await db.collection('notifications').add({
-          user_id: payment.user_id,
-          type: 'installment_reminder',
-          title,
-          message,
-          is_read: 0,
-          created_at: new Date().toISOString()
-        });
+        // Send App Notification if enabled
+        if (payment.user_settings.push_notifications) {
+          await db.collection('notifications').add({
+            user_id: payment.user_id,
+            type: 'installment_reminder',
+            title,
+            message,
+            is_read: 0,
+            created_at: new Date().toISOString()
+          });
+        }
 
-        if (payment.user_email) {
+        // Send Email if enabled
+        if (payment.user_settings.email_reminders && payment.user_email) {
           await sendInstallmentReminderEmail(
             payment.user_email,
             payment.user_name,
@@ -88,8 +98,8 @@ export const initializeCronJobs = () => {
             payment.amount,
             payment.due_date
           );
-        } else {
-          console.warn(`[Cron] Uyarı: Kullanıcı '${payment.user_name}' için e-posta adresi bulunamadı. (Bildirim eklendi)`);
+        } else if (payment.user_settings.email_reminders && !payment.user_email) {
+          console.warn(`[Cron] Uyarı: Kullanıcı '${payment.user_name}' için e-posta adresi bulunamadı.`);
         }
       }
 

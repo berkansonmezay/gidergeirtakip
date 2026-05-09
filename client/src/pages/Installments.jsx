@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, CreditCard, Check, ChevronDown, ChevronUp, Trash2, X, Calendar } from 'lucide-react';
+import { Plus, CreditCard, Check, ChevronDown, ChevronUp, Trash2, X, Calendar, Bell, BellOff } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -272,6 +272,17 @@ function InstallmentGroupRow({ inst, onPay, onUnpay, onDelete, delay, activeTab 
   
   const nextPayment = inst.payments?.find(p => !p.is_paid);
   const lastPaidPayment = [...(inst.payments || [])].reverse().find(p => p.is_paid);
+  
+  const [reminderLoading, setReminderLoading] = useState(false);
+  const toggleReminder = async (e) => {
+    e.stopPropagation();
+    setReminderLoading(true);
+    try {
+      await api.put(`/installments/${inst.id}/toggle-reminder`);
+      window.dispatchEvent(new Event('installment-added')); // Re-fetch all
+    } catch {}
+    setReminderLoading(false);
+  };
 
   return (
     <>
@@ -313,6 +324,14 @@ function InstallmentGroupRow({ inst, onPay, onUnpay, onDelete, delay, activeTab 
         </td>
         <td className="px-4 py-3 text-right" onClick={e => e.stopPropagation()}>
           <div className="flex items-center justify-end gap-1">
+            <button 
+              onClick={toggleReminder} 
+              disabled={reminderLoading}
+              className={`btn-icon btn-ghost btn-sm transition-all ${inst.reminder_enabled ? 'text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10' : 'text-gray-400'}`}
+              title={inst.reminder_enabled ? 'Hatırlatıcıyı Kapat' : 'Hatırlatıcıyı Aç'}
+            >
+              {inst.reminder_enabled ? <Bell size={15} fill="currentColor" /> : <BellOff size={15} />}
+            </button>
             <button 
               onClick={onDelete} 
               className="btn-icon btn-ghost btn-sm hover:!text-red-500" 

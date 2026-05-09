@@ -210,6 +210,22 @@ router.post('/', async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Hata oluştu.' }); }
 });
 
+router.put('/:id/toggle-reminder', async (req, res) => {
+  try {
+    const docRef = db.collection('installments').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Bulunamadı.' });
+    }
+    
+    const current = !!doc.data().reminder_enabled;
+    await docRef.update({ reminder_enabled: !current });
+    
+    res.json({ message: 'Hatırlatıcı durumu güncellendi.', reminder_enabled: !current });
+  } catch (err) { res.status(500).json({ error: 'Hata oluştu.' }); }
+});
+
 router.put('/payments/:paymentId/pay', async (req, res) => {
   try {
     const paymentId = req.params.paymentId;

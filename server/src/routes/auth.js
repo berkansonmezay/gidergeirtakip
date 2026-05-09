@@ -219,7 +219,8 @@ router.post('/reset-password', async (req, res) => {
 // GET /api/auth/me
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    const userDoc = await db.collection('users').doc(req.user.id).get();
+    if (!req.user?.id) return res.status(401).json({ error: 'Kullanıcı ID bulunamadı.' });
+    const userDoc = await db.collection('users').doc(String(req.user.id)).get();
     if (!userDoc.exists) {
       return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
     }
@@ -229,6 +230,83 @@ router.get('/me', authenticateToken, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Kullanıcı bilgileri alınırken hata oluştu.' });
   }
+});
+
+// PUT /api/auth/profile
+router.put('/profile', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Kullanıcı ID bulunamadı.' });
+    const { name, email } = req.body;
+    if (!name || !email) return res.status(400).json({ error: 'Ad ve email gereklidir.' });
+    
+    // Check if email is already taken by another user
+    const emailSnapshot = await db.collection('users').where('email', '==', email).get();
+    const otherUser = emailSnapshot.docs.find(doc => doc.id !== String(req.user.id));
+    if (otherUser) return res.status(400).json({ error: 'Bu email adresi zaten kullanımda.' });
+
+    await db.collection('users').doc(String(req.user.id)).update({ name, email });
+    
+    res.json({ message: 'Profil güncellendi.', user: { id: req.user.id, name, email, role: req.user.role } });
+  } catch (err) { res.status(500).json({ error: 'Profil güncellenirken hata oluştu.' }); }
+});
+
+// PUT /api/auth/change-password
+router.put('/change-password', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Kullanıcı ID bulunamadı.' });
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) return res.status(400).json({ error: 'Mevcut ve yeni şifre gereklidir.' });
+
+    const userDoc = await db.collection('users').doc(String(req.user.id)).get();
+    const user = userDoc.data();
+
+    const isValid = await bcrypt.compare(currentPassword, user.password_hash);
+    if (!isValid) return res.status(401).json({ error: 'Mevcut şifre hatalı.' });
+
+    const errors = validatePassword(newPassword);
+    if (errors.length > 0) return res.status(400).json({ error: errors.join(' ') });
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    await db.collection('users').doc(String(req.user.id)).update({ password_hash: passwordHash });
+
+    res.json({ message: 'Şifre başarıyla değiştirildi.' });
+  } catch (err) { res.status(500).json({ error: 'Şifre değiştirilirken hata oluştu.' }); }
+});
+
+// GET /api/auth/settings
+router.get('/settings', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Kullanıcı ID bulunamadı.' });
+    const userDoc = await db.collection('users').doc(String(req.user.id)).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
+    
+    const settings = userDoc.data().notification_settings || {
+      email_reminders: true,
+      push_notifications: true
+    };
+    
+    res.json({ settings });
+  } catch (err) { 
+    console.error('Error fetching settings:', err);
+    res.status(500).json({ error: 'Ayarlar alınırken hata oluştu.' }); 
+  }
+});
+
+// PUT /api/auth/settings
+router.put('/settings', authenticateToken, async (req, res) => {
+  try {
+    if (!req.user?.id) return res.status(401).json({ error: 'Kullanıcı ID bulunamadı.' });
+    const { email_reminders, push_notifications } = req.body;
+    
+    await db.collection('users').doc(String(req.user.id)).update({
+      notification_settings: {
+        email_reminders: !!email_reminders,
+        push_notifications: !!push_notifications
+      }
+    });
+    
+    res.json({ message: 'Ayarlar güncellendi.' });
+  } catch (err) { res.status(500).json({ error: 'Ayarlar güncellenirken hata oluştu.' }); }
 });
 
 export default router;
