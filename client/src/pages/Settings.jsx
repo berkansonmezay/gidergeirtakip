@@ -14,6 +14,8 @@ export default function Settings() {
   const [profileName, setProfileName] = useState(user?.name || '');
   const [profileEmail, setProfileEmail] = useState(user?.email || '');
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileSuccess, setProfileSuccess] = useState(null);
+  const [profileError, setProfileError] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [settings, setSettings] = useState({
     email_reminders: true,
@@ -39,12 +41,15 @@ export default function Settings() {
   const handleProfileUpdate = async (e) => {
     e.preventDefault();
     setProfileLoading(true);
+    setProfileSuccess(null);
+    setProfileError(null);
     try {
       const { data } = await api.put('/auth/profile', { name: profileName, email: profileEmail });
       updateUser(data.user);
-      alert('Profil başarıyla güncellendi.');
+      setProfileSuccess('Profil başarıyla güncellendi.');
+      setTimeout(() => setProfileSuccess(null), 3000);
     } catch (err) {
-      alert(err.response?.data?.error || 'Profil güncellenirken bir hata oluştu.');
+      setProfileError(err.response?.data?.error || 'Profil güncellenirken bir hata oluştu.');
     }
     setProfileLoading(false);
   };
@@ -91,6 +96,18 @@ export default function Settings() {
               required 
             />
           </div>
+
+          {profileSuccess && (
+            <div className="p-3 bg-green-50 text-green-600 text-xs rounded-lg font-medium animate-fade-in">
+              {profileSuccess}
+            </div>
+          )}
+          {profileError && (
+            <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg font-medium animate-fade-in">
+              {profileError}
+            </div>
+          )}
+
           <div className="flex items-center justify-between pt-2">
             <div className="flex items-center gap-2">
               <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Rol:</span>
@@ -226,6 +243,7 @@ function ChangePasswordModal({ onClose }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -233,10 +251,14 @@ function ChangePasswordModal({ onClose }) {
     
     setLoading(true);
     setError(null);
+    setSuccess(null);
     try {
       await api.put('/auth/change-password', { currentPassword, newPassword });
-      alert('Şifre başarıyla değiştirildi.');
-      onClose();
+      setSuccess('Şifre başarıyla değiştirildi.');
+      setTimeout(() => {
+        setSuccess(null);
+        onClose();
+      }, 1500);
     } catch (err) {
       setError(err.response?.data?.error || 'Bir hata oluştu.');
     }
@@ -291,8 +313,14 @@ function ChangePasswordModal({ onClose }) {
           </div>
 
           {error && (
-            <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg font-medium">
+            <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg font-medium animate-fade-in">
               {error}
+            </div>
+          )}
+          
+          {success && (
+            <div className="p-3 bg-green-50 text-green-600 text-xs rounded-lg font-medium animate-fade-in">
+              {success}
             </div>
           )}
 

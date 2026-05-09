@@ -6,6 +6,7 @@ export default function AdminUserManagement() {
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null);
   
   // Form State
   const [showForm, setShowForm] = useState(false);
@@ -51,17 +52,22 @@ export default function AdminUserManagement() {
     e.preventDefault();
     if (!name || !username) return;
 
+    setError(null);
+    setSuccess(null);
     try {
       setFormLoading(true);
       if (editId) {
         await api.put(`/family/members/${editId}`, { name, username, password });
+        setSuccess('Kullanıcı başarıyla güncellendi.');
       } else {
         await api.post('/family/members', { name, username, password });
+        setSuccess('Yeni kullanıcı başarıyla eklendi.');
       }
       setShowForm(false);
       fetchMembers();
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      alert(err.response?.data?.error || 'İşlem başarısız.');
+      setError(err.response?.data?.error || 'İşlem başarısız.');
     } finally {
       setFormLoading(false);
     }
@@ -69,11 +75,15 @@ export default function AdminUserManagement() {
 
   const handleDeleteUser = async (id) => {
     if (!confirm('Bu kullanıcıyı silmek istediğinize emin misiniz?')) return;
+    setError(null);
+    setSuccess(null);
     try {
       await api.delete(`/family/members/${id}`);
+      setSuccess('Kullanıcı başarıyla silindi.');
       fetchMembers();
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      alert(err.response?.data?.error || 'Kullanıcı silinemedi.');
+      setError(err.response?.data?.error || 'Kullanıcı silinemedi.');
     }
   };
 
@@ -94,7 +104,16 @@ export default function AdminUserManagement() {
         </button>
       </div>
 
-      {error && <div className="text-red-500 text-sm mb-4">{error}</div>}
+      {success && (
+        <div className="p-3 bg-green-50 text-green-600 text-xs rounded-lg font-medium animate-fade-in mb-4">
+          {success}
+        </div>
+      )}
+      {error && (
+        <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg font-medium animate-fade-in mb-4">
+          {error}
+        </div>
+      )}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-6 p-4 rounded-xl space-y-3" style={{ background: 'var(--bg-secondary)' }}>

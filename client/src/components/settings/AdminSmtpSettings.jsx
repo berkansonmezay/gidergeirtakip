@@ -12,6 +12,8 @@ export default function AdminSmtpSettings() {
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [success, setSuccess] = useState(null);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     api.get('/auth/smtp-settings').then(r => {
@@ -28,11 +30,14 @@ export default function AdminSmtpSettings() {
   const handleSave = async (e) => {
     e.preventDefault();
     setSaving(true);
+    setSuccess(null);
+    setError(null);
     try {
       await api.put('/auth/smtp-settings', smtpSettings);
-      alert('SMTP ayarları başarıyla kaydedildi.');
+      setSuccess('SMTP ayarları başarıyla kaydedildi.');
+      setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      alert(err.response?.data?.error || 'SMTP ayarları kaydedilirken hata oluştu.');
+      setError(err.response?.data?.error || 'SMTP ayarları kaydedilirken hata oluştu.');
     }
     setSaving(false);
   };
@@ -117,6 +122,17 @@ export default function AdminSmtpSettings() {
             onChange={handleChange} 
           />
         </div>
+
+        {success && (
+          <div className="p-3 bg-green-50 text-green-600 text-xs rounded-lg font-medium animate-fade-in">
+            {success}
+          </div>
+        )}
+        {error && (
+          <div className="p-3 bg-red-50 text-red-600 text-xs rounded-lg font-medium animate-fade-in">
+            {error}
+          </div>
+        )}
 
         <div className="flex justify-end pt-2">
           <button 
