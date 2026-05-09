@@ -8,8 +8,12 @@ router.use(authenticateToken);
 // GET /api/notifications
 router.get('/', async (req, res) => {
   try {
+    const userIdStr = String(req.user.id);
+    const userIdNum = Number(req.user.id);
+    const idArray = isNaN(userIdNum) ? [userIdStr] : [userIdStr, userIdNum];
+
     const snapshot = await db.collection('notifications')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', idArray)
       .get();
       
     let notifications = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -17,7 +21,7 @@ router.get('/', async (req, res) => {
     notifications = notifications.slice(0, 50);
     
     const unreadSnapshot = await db.collection('notifications')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', idArray)
       .where('is_read', '==', 0)
       .get();
       
@@ -33,8 +37,12 @@ router.get('/', async (req, res) => {
 // PUT /api/notifications/read-all
 router.put('/read-all', async (req, res) => {
   try {
+    const userIdStr = String(req.user.id);
+    const userIdNum = Number(req.user.id);
+    const idArray = isNaN(userIdNum) ? [userIdStr] : [userIdStr, userIdNum];
+
     const snapshot = await db.collection('notifications')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', idArray)
       .where('is_read', '==', 0)
       .get();
       
@@ -57,7 +65,7 @@ router.put('/:id/read', async (req, res) => {
     const docRef = db.collection('notifications').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bildirim bulunamadı.' });
     }
     
@@ -74,7 +82,7 @@ router.delete('/:id', async (req, res) => {
     const docRef = db.collection('notifications').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bildirim bulunamadı.' });
     }
     
