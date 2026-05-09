@@ -222,7 +222,6 @@ export default function Calendar() {
                 <th className="p-2 border border-[var(--border)] text-left font-bold text-[var(--text-primary)]" style={{ width: '180px' }}></th>
                 {MONTHS.map(m => <th key={m} className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[70px]">{m}</th>)}
                 <th className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[80px]">Toplam</th>
-                <th className="p-2 border border-[var(--border)] text-center text-[var(--text-secondary)] font-bold min-w-[80px]">Ara<br/>Toplam</th>
               </tr>
             </thead>
             <tbody>
@@ -241,9 +240,6 @@ export default function Calendar() {
                       <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                         {formatNumber(reportData[payee].total)}
                       </td>
-                      <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
-                        {formatNumber(reportData[payee].total)}
-                      </td>
                     </tr>
                     {/* Category Rows */}
                     {cats.map(cat => {
@@ -259,7 +255,6 @@ export default function Calendar() {
                           <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)]">
                             {formatNumber(rowData.total)}
                           </td>
-                          <td className="border border-[var(--border)] bg-[var(--bg-card)]"></td>
                         </tr>
                       );
                     })}
@@ -275,9 +270,6 @@ export default function Calendar() {
                   </td>
                 ))}
                 <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--expense)] text-xs">
-                  {formatNumber(grandTotal)}
-                </td>
-                <td className="p-2 border border-[var(--border)] text-right font-bold text-[var(--income)] text-xs">
                   {formatNumber(grandTotal)}
                 </td>
               </tr>
