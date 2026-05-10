@@ -89,6 +89,12 @@ router.put('/:id', async (req, res) => {
       if (current_value !== undefined) newCurrentValue = Number(current_value);
     }
     
+    // Reset value if amount drops to 0, so past movements don't carry over
+    if (newCurrentAmount <= 0) {
+      newCurrentAmount = 0;
+      newCurrentValue = 0;
+    }
+    
     const newTarget = Number(target_amount || g.target_amount || 0);
     const isComplete = newCurrentAmount >= newTarget && newTarget > 0;
     
