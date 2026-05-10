@@ -64,14 +64,16 @@ export default function Savings() {
   const [transDate, setTransDate] = useState(new Date().toISOString().split('T')[0]);
   const [deleteConfirm, setDeleteConfirm] = useState(null); // { type: 'goal'|'history', id, historyId, title, message }
   const [goldPrices, setGoldPrices] = useState(loadGoldPrices);
+  const [draftPrices, setDraftPrices] = useState(loadGoldPrices);
 
-  const updateGoldPrice = useCallback((type, value) => {
-    setGoldPrices(prev => {
-      const next = { ...prev, [type]: value };
-      saveGoldPrices(next);
-      return next;
-    });
+  const updateDraftPrice = useCallback((type, value) => {
+    setDraftPrices(prev => ({ ...prev, [type]: value }));
   }, []);
+
+  const handleApplyPrices = useCallback(() => {
+    setGoldPrices(draftPrices);
+    saveGoldPrices(draftPrices);
+  }, [draftPrices]);
 
   const [fetchingPrices, setFetchingPrices] = useState(false);
   const fetchLiveGoldPrices = useCallback(async () => {
@@ -79,7 +81,7 @@ export default function Savings() {
     try {
       const { data } = await api.get('/gold-prices');
       if (data.prices) {
-        const newPrices = { ...goldPrices };
+        const newPrices = { ...draftPrices };
         GOLD_TYPES.forEach(type => {
           if (data.prices[type]) {
             newPrices[type] = String(Math.round(data.prices[type].sell));
@@ -91,15 +93,14 @@ export default function Savings() {
             newPrices[type] = String(data.prices[type].sell.toFixed(2));
           }
         });
-        setGoldPrices(newPrices);
-        saveGoldPrices(newPrices);
+        setDraftPrices(newPrices);
       }
     } catch (err) {
       console.error('Gold prices fetch error:', err);
       alert('Fiyatlar alınamadı. Lütfen daha sonra tekrar deneyin.');
     }
     setFetchingPrices(false);
-  }, [goldPrices]);
+  }, [draftPrices]);
 
   const fetchGoals = async () => {
     try { 
@@ -177,6 +178,7 @@ export default function Savings() {
     let total = 0;
     goals.forEach(g => {
       if (g.status === 'deleted') return;
+      if (!g.current_amount || g.current_amount <= 0) return;
       // Determine which gold type this account uses (stored in currency or metric)
       const goldType = GOLD_TYPES.includes(g.currency) ? g.currency : (GOLD_TYPES.includes(g.metric) ? g.metric : null);
       // Check for foreign currency (USD, EUR)
@@ -206,7 +208,7 @@ export default function Savings() {
 
   // Total cost (sum of all current_value = actual investment/maliyet)
   const totalCost = useMemo(() => {
-    return goals.filter(g => g.status !== 'deleted').reduce((s, g) => s + (g.current_value || 0), 0);
+    return goals.filter(g => g.status !== 'deleted').reduce((s, g) => s + ((g.current_amount > 0) ? (g.current_value || 0) : 0), 0);
   }, [goals]);
 
   // Profit/Loss
@@ -254,8 +256,8 @@ export default function Savings() {
                     type="number"
                     className="input text-xs py-1 pr-6 w-full"
                     placeholder="0"
-                    value={goldPrices[type] || ''}
-                    onChange={(e) => updateGoldPrice(type, e.target.value)}
+                    value={draftPrices[type] || ''}
+                    onChange={(e) => updateDraftPrice(type, e.target.value)}
                     style={{ fontSize: '11px', minHeight: 'unset', height: '28px' }}
                   />
                   <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>₺</span>
@@ -277,8 +279,8 @@ export default function Savings() {
                     type="number"
                     className="input text-xs py-1 pr-6 w-full"
                     placeholder="0"
-                    value={goldPrices[type] || ''}
-                    onChange={(e) => updateGoldPrice(type, e.target.value)}
+                    value={draftPrices[type] || ''}
+                    onChange={(e) => updateDraftPrice(type, e.target.value)}
                     style={{ fontSize: '11px', minHeight: 'unset', height: '28px' }}
                     step="0.01"
                   />
@@ -286,6 +288,14 @@ export default function Savings() {
                 </div>
               </div>
             ))}
+          </div>
+          <div className="flex justify-end mt-3">
+            <button 
+              onClick={handleApplyPrices} 
+              className="bg-indigo-500 hover:bg-indigo-600 text-white shadow-md shadow-indigo-500/20 px-5 h-[28px] text-[11px] font-bold rounded-lg transition-all" 
+              title="Girilen fiyatları hesaplamalara uygula">
+              Uygula
+            </button>
           </div>
         </div>
 
@@ -372,7 +382,7 @@ export default function Savings() {
                       </span>
                       {((goal.currency && goal.currency !== '₺') || GOLD_TYPES.includes(goal.metric)) && (
                         <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                          {formatMoney(goal.current_value || 0)}
+                          {formatMoney((goal.current_amount > 0 ? goal.current_value : 0) || 0)}
                         </p>
                       )}
                     </div>
@@ -605,6 +615,13 @@ function GoalDetailsModal({ goal, onClose, onDeleteHistoryItem }) {
   const exportToPDF = (goal, history) => {
     try {
       const doc = new jsPDF();
+      doc.setLanguage('tr');
+      doc.setDocumentProperties({
+        title: `${goal.name} - Hesap Dökümü`,
+        subject: 'Tasarruf hesabı birikim geçmişi',
+        author: 'Aile Bütçesi',
+        creator: 'Aile Bütçesi Finans Yönetimi',
+      });
       
       doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
@@ -612,7 +629,7 @@ function GoalDetailsModal({ goal, onClose, onDeleteHistoryItem }) {
 
       doc.setFontSize(18);
       doc.text(`${goal.name} - Hesap Dökümü`, 14, 22);
-      doc.setFontSize(11);
+      doc.setFontSize(10);
       doc.setTextColor(100);
       doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
       
@@ -693,7 +710,7 @@ function GoalDetailsModal({ goal, onClose, onDeleteHistoryItem }) {
             </div>
             <div className="bg-white/10 p-3 rounded-xl backdrop-blur-sm">
               <p className="text-xs opacity-70 mb-1">Toplam Değer</p>
-              <p className="text-lg font-bold">{formatMoney(goal.current_value || 0)}</p>
+              <p className="text-lg font-bold">{formatMoney((goal.current_amount > 0 ? goal.current_value : 0) || 0)}</p>
             </div>
           </div>
         </div>

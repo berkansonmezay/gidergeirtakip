@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Search, TrendingUp, TrendingDown, Clock, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar as CalendarIcon, Plus, Search, TrendingUp, TrendingDown, Clock, X, Download, FileSpreadsheet } from 'lucide-react';
 import api from '../services/api';
+import { robotoBase64 } from '../utils/fonts/Roboto.js';
 
 const DAYS = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
 const MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
@@ -93,6 +94,206 @@ export default function Calendar() {
       item.date === dStr && 
       (searchQuery === '' || item.description?.toLowerCase().includes(searchQuery.toLowerCase()))
     );
+  };
+
+  // ───── Export Helpers ─────
+  const getYearSummary = () => {
+    return MONTHS.map((m, idx) => {
+      const mItems = items.filter(item => {
+        const d = new Date(item.date);
+        return d.getMonth() === idx && d.getFullYear() === year;
+      });
+      const income = mItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0);
+      const expense = mItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
+      return { month: m, count: mItems.length, income, expense, balance: income - expense };
+    });
+  };
+
+  const getMonthTransactions = () => {
+    return items.filter(item => {
+      const d = new Date(item.date);
+      return d.getMonth() === month && d.getFullYear() === year;
+    }).sort((a, b) => new Date(a.date) - new Date(b.date));
+  };
+
+  const handleExportExcel = async () => {
+    try {
+      const XLSX = await import('xlsx');
+      const wb = XLSX.utils.book_new();
+
+      if (view === 'year') {
+        const summary = getYearSummary();
+        const ws = XLSX.utils.json_to_sheet(summary.map(d => ({
+          Ay: d.month,
+          'İşlem Sayısı': d.count,
+          'Gelir (₺)': d.income,
+          'Gider (₺)': d.expense,
+          'Bakiye (₺)': d.balance,
+        })));
+        XLSX.utils.book_append_sheet(wb, ws, `${year} Yıllık Özet`);
+      } else if (view === 'month') {
+        const txs = getMonthTransactions();
+        const ws = XLSX.utils.json_to_sheet(txs.map(t => ({
+          Tarih: new Date(t.date).toLocaleDateString('tr-TR'),
+          'Harcama Yeri': t.payee_name || '-',
+          Kategori: t.category_name || '-',
+          'Açıklama': t.description || '-',
+          Tür: t.type === 'income' ? 'Gelir' : 'Gider',
+          'Tutar (₺)': t.amount,
+        })));
+        XLSX.utils.book_append_sheet(wb, ws, `${MONTHS[month]} ${year}`);
+      } else {
+        const dayTxs = getItemsForDate(currentDate);
+        const ws = XLSX.utils.json_to_sheet(dayTxs.map(t => ({
+          Tarih: new Date(t.date).toLocaleDateString('tr-TR'),
+          'Harcama Yeri': t.payee_name || '-',
+          Kategori: t.category_name || '-',
+          'Açıklama': t.description || '-',
+          Tür: t.type === 'income' ? 'Gelir' : 'Gider',
+          'Tutar (₺)': t.amount,
+        })));
+        XLSX.utils.book_append_sheet(wb, ws, currentDate.toLocaleDateString('tr-TR'));
+      }
+
+      const fileName = view === 'year'
+        ? `Takvim_Yillik_${year}.xlsx`
+        : view === 'month'
+          ? `Takvim_${MONTHS[month]}_${year}.xlsx`
+          : `Takvim_${currentDate.toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+    } catch (err) { console.error('Excel export error:', err); }
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      const { default: jsPDF } = await import('jspdf');
+      const { default: autoTable } = await import('jspdf-autotable');
+
+      const doc = new jsPDF(view === 'year' ? { orientation: 'landscape' } : {});
+      doc.setLanguage('tr');
+      doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+      doc.setFont('Roboto');
+
+      if (view === 'year') {
+        doc.setDocumentProperties({
+          title: `Takvim Yıllık Özet - ${year}`,
+          subject: `${year} yılı aylık gelir-gider özeti`,
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.setFontSize(18);
+        doc.text(`Takvim Yıllık Özet - ${year}`, 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+        const summary = getYearSummary();
+        const totalIncome = summary.reduce((s, d) => s + d.income, 0);
+        const totalExpense = summary.reduce((s, d) => s + d.expense, 0);
+        const totalBalance = totalIncome - totalExpense;
+
+        autoTable(doc, {
+          startY: 36,
+          head: [['Ay', 'İşlem', 'Gelir', 'Gider', 'Bakiye']],
+          body: summary.map(d => [
+            d.month,
+            d.count,
+            formatMoney(d.income),
+            formatMoney(d.expense),
+            formatMoney(d.balance),
+          ]),
+          foot: [['Toplam', summary.reduce((s, d) => s + d.count, 0), formatMoney(totalIncome), formatMoney(totalExpense), formatMoney(totalBalance)]],
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+          columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' } },
+          didParseCell: function(data) {
+            if (data.section === 'body' && data.column.index === 4) {
+              const row = summary[data.row.index];
+              if (row) data.cell.styles.textColor = row.balance >= 0 ? [16, 185, 129] : [239, 68, 68];
+            }
+          },
+        });
+        doc.save(`Takvim_Yillik_${year}.pdf`);
+
+      } else if (view === 'month') {
+        doc.setDocumentProperties({
+          title: `Takvim - ${MONTHS[month]} ${year}`,
+          subject: `${MONTHS[month]} ${year} aylık işlem detayı`,
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.setFontSize(18);
+        doc.text(`${MONTHS[month]} ${year} - İşlemler`, 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+        // Summary line
+        doc.setFontSize(10);
+        doc.text(`Gelir: ${formatMoney(stats.income)}  |  Gider: ${formatMoney(stats.expense)}  |  Bakiye: ${formatMoney(stats.balance)}`, 14, 38);
+
+        const txs = getMonthTransactions();
+        autoTable(doc, {
+          startY: 44,
+          head: [['Tarih', 'Harcama Yeri', 'Kategori', 'Açıklama', 'Gelir', 'Gider']],
+          body: txs.map(t => [
+            new Date(t.date).toLocaleDateString('tr-TR'),
+            t.payee_name || '-',
+            t.category_name || '-',
+            t.description || '-',
+            t.type === 'income' ? formatMoney(t.amount) : '-',
+            t.type === 'expense' ? formatMoney(t.amount) : '-',
+          ]),
+          foot: [['', '', '', 'Toplam',
+            formatMoney(txs.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)),
+            formatMoney(txs.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)),
+          ]],
+          styles: { font: 'Roboto', fontSize: 8 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+          columnStyles: { 4: { halign: 'right' }, 5: { halign: 'right' } },
+        });
+        doc.save(`Takvim_${MONTHS[month]}_${year}.pdf`);
+
+      } else {
+        doc.setDocumentProperties({
+          title: `Takvim - ${currentDate.toLocaleDateString('tr-TR')}`,
+          subject: `Günlük işlem detayı`,
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.setFontSize(18);
+        doc.text(currentDate.toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }), 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+        const dayTxs = getItemsForDate(currentDate);
+        const dayIncome = dayTxs.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0);
+        const dayExpense = dayTxs.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0);
+
+        doc.text(`Gelir: ${formatMoney(dayIncome)}  |  Gider: ${formatMoney(dayExpense)}  |  Bakiye: ${formatMoney(dayIncome - dayExpense)}`, 14, 38);
+
+        autoTable(doc, {
+          startY: 44,
+          head: [['Kategori', 'Açıklama', 'Tür', 'Tutar']],
+          body: dayTxs.map(t => [
+            t.category_name || '-',
+            t.description || '-',
+            t.type === 'income' ? 'Gelir' : 'Gider',
+            formatMoney(t.amount),
+          ]),
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          columnStyles: { 3: { halign: 'right' } },
+          didParseCell: function(data) {
+            if (data.section === 'body' && data.column.index === 2) {
+              data.cell.styles.textColor = data.cell.raw === 'Gelir' ? [16, 185, 129] : [239, 68, 68];
+            }
+          },
+        });
+        doc.save(`Takvim_${currentDate.toISOString().split('T')[0]}.pdf`);
+      }
+    } catch (err) { console.error('PDF export error:', err); }
   };
 
   const renderMonthView = () => (
@@ -269,6 +470,10 @@ export default function Calendar() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2">
+            <button onClick={handleExportPDF} className="btn btn-secondary btn-sm h-10 px-4"><Download size={18} /> PDF</button>
+            <button onClick={handleExportExcel} className="btn btn-secondary btn-sm h-10 px-4"><FileSpreadsheet size={18} /> Excel</button>
+          </div>
           <div className="flex bg-[var(--bg-card)] rounded-2xl border border-[var(--border)] p-1 shadow-sm">
             <button onClick={() => setView('day')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${view === 'day' ? 'gradient-primary text-white shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}>Gün</button>
             <button onClick={() => setView('month')} className={`px-5 py-2 text-xs font-bold rounded-xl transition-all ${view === 'month' ? 'gradient-primary text-white shadow-md' : 'text-[var(--text-muted)] hover:bg-[var(--bg-secondary)]'}`}>Ay</button>

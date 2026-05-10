@@ -192,13 +192,23 @@ export default function Transactions() {
       if (filtered.length === 0) return alert('Dışa aktarılacak kayıt bulunamadı.');
 
       const doc = new jsPDF();
+      doc.setLanguage('tr');
+      doc.setDocumentProperties({
+        title: 'İşlemler Raporu',
+        subject: 'Gelir ve gider işlemleri listesi',
+        author: 'Aile Bütçesi',
+        creator: 'Aile Bütçesi Finans Yönetimi',
+      });
       
       // Add custom font for Turkish characters
       doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
       doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
       doc.setFont('Roboto');
 
-      doc.text('İşlemler Raporu', 14, 15);
+      doc.setFontSize(18);
+      doc.text('İşlemler Raporu', 14, 22);
+      doc.setFontSize(10);
+      doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
       
       const tableData = filtered.map(tx => [
         new Date(tx.date).toLocaleDateString('tr-TR'),
@@ -213,7 +223,7 @@ export default function Transactions() {
         head: [['Tarih', 'Harcama Yeri', 'Kategori', 'Açıklama', 'Gelir', 'Gider']],
         body: tableData,
         foot: [['', '', '', 'Genel Toplam:', formatMoney(totalIncome), formatMoney(totalExpense)]],
-        startY: 20,
+        startY: 36,
         styles: { font: 'Roboto', fontSize: 9 },
         headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
         footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },

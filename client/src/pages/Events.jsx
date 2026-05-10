@@ -410,7 +410,7 @@ export default function Events() {
       Başlık: e.title,
       Açıklama: e.description,
       Tür: EVENT_TYPES.find(t => t.id === e.type)?.label,
-      Tarih: e.date,
+      Tarih: new Date(e.date).toLocaleDateString('tr-TR'),
       Saat: e.time || 'Tüm Gün',
       Tekrar: RECURRENCE_OPTIONS.find(r => r.id === e.recurrence)?.label
     }));
@@ -423,22 +423,37 @@ export default function Events() {
   const handleExportPDF = async () => {
     const { default: jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
+    const { robotoBase64 } = await import('../utils/fonts/Roboto.js');
     const doc = new jsPDF();
+    doc.setLanguage('tr');
+    doc.setDocumentProperties({
+      title: 'Etkinlik ve Hatırlatıcı Listesi',
+      subject: 'Planlanan etkinlikler ve hatırlatıcılar',
+      author: 'Aile Bütçesi',
+      creator: 'Aile Bütçesi Finans Yönetimi',
+    });
     
-    // Turkish character support check would go here if needed as in Reports.jsx
-    
-    doc.text('Etkinlik ve Hatırlatıcı Listesi', 14, 15);
+    doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+    doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+    doc.setFont('Roboto');
+
+    doc.setFontSize(18);
+    doc.text('Etkinlik ve Hatırlatıcı Listesi', 14, 22);
+    doc.setFontSize(10);
+    doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
     autoTable(doc, {
-      startY: 20,
+      startY: 36,
       head: [['Başlık', 'Tür', 'Tarih', 'Saat', 'Tekrar']],
       body: expandedEvents.map(e => [
         e.title, 
         EVENT_TYPES.find(t => t.id === e.type)?.label,
-        e.date,
+        new Date(e.date).toLocaleDateString('tr-TR'),
         e.time || 'Tüm Gün',
         RECURRENCE_OPTIONS.find(r => r.id === e.recurrence)?.label
       ]),
-      styles: { fontSize: 8 }
+      styles: { font: 'Roboto', fontSize: 9 },
+      headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
     });
     doc.save('Etkinlik_Listesi.pdf');
   };

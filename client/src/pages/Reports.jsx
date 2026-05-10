@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, Fragment } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
-import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, Clock, Repeat, AlertCircle } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend, ReferenceLine } from 'recharts';
+import { Download, FileSpreadsheet, ChevronLeft, ChevronRight, Clock, Repeat, AlertCircle, TrendingUp, TrendingDown, ArrowUpRight, ArrowDownRight, Minus, GitCompareArrows } from 'lucide-react';
 import api from '../services/api';
 import { robotoBase64 } from '../utils/fonts/Roboto.js';
 
@@ -9,7 +9,7 @@ const COLORS = ['#6366f1','#8b5cf6','#ec4899','#f43f5e','#f97316','#eab308','#22
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
 
 export default function Reports() {
-  const [activeTab, setActiveTab] = useState('summary'); // summary, annual, monthly
+  const [activeTab, setActiveTab] = useState('summary'); // summary, annual, monthly, compare
   const [monthlyData, setMonthlyData] = useState([]);
   const [categoryData, setCategoryData] = useState([]);
   const [trendData, setTrendData] = useState([]);
@@ -31,6 +31,15 @@ export default function Reports() {
   const [selectedCatTrend, setSelectedCatTrend] = useState('');
   const [selectedPayeeTrend, setSelectedPayeeTrend] = useState('');
 
+  // Comparison State
+  const [compareMonthA, setCompareMonthA] = useState(new Date().getMonth() === 0 ? 10 : new Date().getMonth() - 2);
+  const [compareYearA, setCompareYearA] = useState(new Date().getMonth() < 2 ? new Date().getFullYear() - 1 : new Date().getFullYear());
+  const [compareMonthB, setCompareMonthB] = useState(new Date().getMonth() === 0 ? 11 : new Date().getMonth() - 1);
+  const [compareYearB, setCompareYearB] = useState(new Date().getMonth() < 1 ? new Date().getFullYear() - 1 : new Date().getFullYear());
+  const [compareDataA, setCompareDataA] = useState([]);
+  const [compareDataB, setCompareDataB] = useState([]);
+  const [compareLoading, setCompareLoading] = useState(false);
+
   useEffect(() => {
     fetchSummaryData();
   }, []);
@@ -43,6 +52,12 @@ export default function Reports() {
       fetchMonthlyDetails();
     }
   }, [activeTab, year, selectedMonth, selectedYear]);
+
+  useEffect(() => {
+    if (activeTab === 'compare') {
+      fetchCompareData();
+    }
+  }, [activeTab, compareMonthA, compareYearA, compareMonthB, compareYearB]);
 
   const fetchSummaryData = async () => {
     setLoading(true);
@@ -88,6 +103,75 @@ export default function Reports() {
     setMonthlyLoading(false);
   };
 
+  const fetchCompareData = async () => {
+    setCompareLoading(true);
+    try {
+      const startA = new Date(compareYearA, compareMonthA, 1).toISOString().split('T')[0];
+      const endA = new Date(compareYearA, compareMonthA + 1, 0).toISOString().split('T')[0];
+      const startB = new Date(compareYearB, compareMonthB, 1).toISOString().split('T')[0];
+      const endB = new Date(compareYearB, compareMonthB + 1, 0).toISOString().split('T')[0];
+      const [resA, resB] = await Promise.all([
+        api.get(`/transactions?start_date=${startA}&end_date=${endA}&limit=1000`),
+        api.get(`/transactions?start_date=${startB}&end_date=${endB}&limit=1000`),
+      ]);
+      setCompareDataA(resA.data.transactions || []);
+      setCompareDataB(resB.data.transactions || []);
+    } catch (err) {
+      console.error('Compare data error:', err);
+    }
+    setCompareLoading(false);
+  };
+
+  const getCompareStats = () => {
+    const processTransactions = (txs) => {
+      const cats = {};
+      const payees = {};
+      let totalIncome = 0;
+      let totalExpense = 0;
+      txs.forEach(t => {
+        if (t.type === 'income') {
+          totalIncome += t.amount;
+        } else {
+          totalExpense += t.amount;
+          const cname = t.category_name || 'Diğer';
+          const pname = t.payee_name || 'Diğer';
+          cats[cname] = (cats[cname] || 0) + t.amount;
+          payees[pname] = (payees[pname] || 0) + t.amount;
+        }
+      });
+      return { cats, payees, totalIncome, totalExpense };
+    };
+
+    const statsA = processTransactions(compareDataA);
+    const statsB = processTransactions(compareDataB);
+
+    const labelA = `${MONTHS[compareMonthA]} ${compareYearA}`;
+    const labelB = `${MONTHS[compareMonthB]} ${compareYearB}`;
+
+    // Merge all category keys
+    const allCats = [...new Set([...Object.keys(statsA.cats), ...Object.keys(statsB.cats)])];
+    const catCompare = allCats.map(name => {
+      const valA = statsA.cats[name] || 0;
+      const valB = statsB.cats[name] || 0;
+      const change = valA > 0 ? ((valB - valA) / valA) * 100 : (valB > 0 ? 100 : 0);
+      return { name, [labelA]: valA, [labelB]: valB, change };
+    }).sort((a, b) => Math.max(b[labelA], b[labelB]) - Math.max(a[labelA], a[labelB]));
+
+    // Merge all payee keys
+    const allPayees = [...new Set([...Object.keys(statsA.payees), ...Object.keys(statsB.payees)])];
+    const payeeCompare = allPayees.map(name => {
+      const valA = statsA.payees[name] || 0;
+      const valB = statsB.payees[name] || 0;
+      const change = valA > 0 ? ((valB - valA) / valA) * 100 : (valB > 0 ? 100 : 0);
+      return { name, [labelA]: valA, [labelB]: valB, change };
+    }).sort((a, b) => Math.max(b[labelA], b[labelB]) - Math.max(a[labelA], a[labelB]));
+
+    const totalChangeExpense = statsA.totalExpense > 0 ? ((statsB.totalExpense - statsA.totalExpense) / statsA.totalExpense) * 100 : 0;
+    const totalChangeIncome = statsA.totalIncome > 0 ? ((statsB.totalIncome - statsA.totalIncome) / statsA.totalIncome) * 100 : 0;
+
+    return { statsA, statsB, labelA, labelB, catCompare, payeeCompare, totalChangeExpense, totalChangeIncome };
+  };
+
   const handleExportExcel = async () => {
     try {
       const XLSX = await import('xlsx');
@@ -109,6 +193,28 @@ export default function Reports() {
         });
         const ws = XLSX.utils.json_to_sheet(exportData);
         XLSX.utils.book_append_sheet(wb, ws, 'Yıllık Gider Listesi');
+      } else if (activeTab === 'compare') {
+        const { labelA, labelB, catCompare, payeeCompare, statsA, statsB } = getCompareStats();
+        const ws1 = XLSX.utils.json_to_sheet(catCompare.map(d => ({
+          Kategori: d.name,
+          [labelA]: d[labelA],
+          [labelB]: d[labelB],
+          'Değişim (%)': `${d.change >= 0 ? '+' : ''}${d.change.toFixed(1)}%`,
+        })));
+        XLSX.utils.book_append_sheet(wb, ws1, 'Kategori Karşılaştırma');
+        const ws2 = XLSX.utils.json_to_sheet(payeeCompare.map(d => ({
+          'Harcama Yeri': d.name,
+          [labelA]: d[labelA],
+          [labelB]: d[labelB],
+          'Değişim (%)': `${d.change >= 0 ? '+' : ''}${d.change.toFixed(1)}%`,
+        })));
+        XLSX.utils.book_append_sheet(wb, ws2, 'Harcama Yeri Karşılaştırma');
+        const ws3 = XLSX.utils.json_to_sheet([{
+          Dönem: labelA, Gelir: statsA.totalIncome, Gider: statsA.totalExpense,
+        }, {
+          Dönem: labelB, Gelir: statsB.totalIncome, Gider: statsB.totalExpense,
+        }]);
+        XLSX.utils.book_append_sheet(wb, ws3, 'Özet Karşılaştırma');
       } else {
         const { catStats, payeeStats } = getMonthlyStats();
         const ws1 = XLSX.utils.json_to_sheet(catStats.map(d => ({ Kategori: d.name, Tutar: d.value })));
@@ -122,56 +228,326 @@ export default function Reports() {
   };
 
   const handleExportPDF = async () => {
-    if (activeTab !== 'summary') {
-      alert('Bu rapor türü için PDF dışa aktarma yakında eklenecek. Şimdilik Excel kullanabilirsiniz.');
-      return;
-    }
     try {
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
-      const doc = new jsPDF();
-      doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
-      doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-      doc.setFont('Roboto');
-      doc.setFontSize(18);
-      doc.text('Aile Bütçesi Raporu', 14, 22);
-      doc.setFontSize(10);
-      doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+      const formatNumber = (n) => new Intl.NumberFormat('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 
-      doc.setFontSize(14);
-      doc.text('Aylık Gelir-Gider', 14, 42);
-      const monthlyTotalIncome = monthlyData.reduce((s, d) => s + d.income, 0);
-      const monthlyTotalExpense = monthlyData.reduce((s, d) => s + d.expense, 0);
-      const monthlyTotalBalance = monthlyTotalIncome - monthlyTotalExpense;
+      if (activeTab === 'summary') {
+        const doc = new jsPDF();
+        doc.setLanguage('tr');
+        doc.setDocumentProperties({
+          title: 'Aile Bütçesi - Özet Rapor',
+          subject: 'Aylık gelir-gider ve kategori dağılımı özet raporu',
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.setFont('Roboto');
+        doc.setFontSize(18);
+        doc.text('Aile Bütçesi Raporu', 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
 
-      autoTable(doc, {
-        startY: 46,
-        head: [['Ay', 'Gelir', 'Gider', 'Bakiye']],
-        body: monthlyData.map(d => [d.month, formatMoney(d.income), formatMoney(d.expense), formatMoney(d.balance)]),
-        foot: [['Toplam', formatMoney(monthlyTotalIncome), formatMoney(monthlyTotalExpense), formatMoney(monthlyTotalBalance)]],
-        styles: { font: 'Roboto', fontSize: 9 },
-        headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
-        footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
-        columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
-      });
+        doc.setFontSize(14);
+        doc.text('Aylık Gelir-Gider', 14, 42);
+        const monthlyTotalIncome = monthlyData.reduce((s, d) => s + d.income, 0);
+        const monthlyTotalExpense = monthlyData.reduce((s, d) => s + d.expense, 0);
+        const monthlyTotalBalance = monthlyTotalIncome - monthlyTotalExpense;
 
-      const y2 = doc.lastAutoTable.finalY + 10;
-      doc.setFontSize(14);
-      doc.text('Kategori Dağılımı', 14, y2);
-      const catTotalAmount = categoryData.reduce((s, d) => s + d.total, 0);
-      const catTotalCount = categoryData.reduce((s, d) => s + d.count, 0);
+        autoTable(doc, {
+          startY: 46,
+          head: [['Ay', 'Gelir', 'Gider', 'Bakiye']],
+          body: monthlyData.map(d => [d.month, formatMoney(d.income), formatMoney(d.expense), formatMoney(d.balance)]),
+          foot: [['Toplam', formatMoney(monthlyTotalIncome), formatMoney(monthlyTotalExpense), formatMoney(monthlyTotalBalance)]],
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+        });
 
-      autoTable(doc, {
-        startY: y2 + 4,
-        head: [['Kategori', 'Toplam', 'İşlem', 'Yüzde']],
-        body: categoryData.map(d => [d.name, formatMoney(d.total), d.count, `${d.percentage}%`]),
-        foot: [['Toplam', formatMoney(catTotalAmount), catTotalCount, '100%']],
-        styles: { font: 'Roboto', fontSize: 9 },
-        headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
-        footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
-        columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' } },
-      });
-      doc.save(`Aile_Butcesi_Rapor_${new Date().toISOString().split('T')[0]}.pdf`);
+        const y2 = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(14);
+        doc.text('Kategori Dağılımı', 14, y2);
+        const catTotalAmount = categoryData.reduce((s, d) => s + d.total, 0);
+        const catTotalCount = categoryData.reduce((s, d) => s + d.count, 0);
+
+        autoTable(doc, {
+          startY: y2 + 4,
+          head: [['Kategori', 'Toplam', 'İşlem', 'Yüzde']],
+          body: categoryData.map(d => [d.name, formatMoney(d.total), d.count, `${d.percentage}%`]),
+          foot: [['Toplam', formatMoney(catTotalAmount), catTotalCount, '100%']],
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+          columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' } },
+        });
+        doc.save(`Aile_Butcesi_Ozet_Rapor_${new Date().toISOString().split('T')[0]}.pdf`);
+
+      } else if (activeTab === 'annual') {
+        // Yıllık Gider Listesi PDF - Landscape for 12 month columns
+        const doc = new jsPDF({ orientation: 'landscape' });
+        doc.setLanguage('tr');
+        doc.setDocumentProperties({
+          title: `Yıllık Gider Listesi - ${year}`,
+          subject: `${year} yılına ait aylık bazda gider detay raporu`,
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.setFont('Roboto');
+        doc.setFontSize(18);
+        doc.text(`Yıllık Gider Listesi - ${year}`, 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+        const { reportData, monthTotals, grandTotal } = getAnnualReportData();
+        const payeesList = Object.keys(reportData).sort();
+
+        // Build table body rows
+        const tableBody = [];
+        payeesList.forEach(payee => {
+          // Payee header row (bold)
+          const payeeRow = [payee, ...reportData[payee].months.map(amt => amt > 0 ? formatNumber(amt) : ''), formatNumber(reportData[payee].total)];
+          tableBody.push({ row: payeeRow, isPayee: true });
+
+          // Category rows
+          Object.keys(reportData[payee].categories).sort().forEach(cat => {
+            const catData = reportData[payee].categories[cat];
+            const catRow = [`  ${cat}`, ...catData.months.map(amt => amt > 0 ? formatNumber(amt) : ''), formatNumber(catData.total)];
+            tableBody.push({ row: catRow, isPayee: false });
+          });
+        });
+
+        const head = [['', ...MONTHS, 'Toplam']];
+        const foot = [['Genel Toplam', ...monthTotals.map(t => t > 0 ? formatNumber(t) : ''), formatNumber(grandTotal)]];
+
+        autoTable(doc, {
+          startY: 36,
+          head,
+          body: tableBody.map(r => r.row),
+          foot,
+          styles: { font: 'Roboto', fontSize: 7, cellPadding: 2 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241], halign: 'center', fontSize: 7 },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right', fontSize: 7 },
+          columnStyles: {
+            0: { cellWidth: 40, halign: 'left' },
+            1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' },
+            4: { halign: 'right' }, 5: { halign: 'right' }, 6: { halign: 'right' },
+            7: { halign: 'right' }, 8: { halign: 'right' }, 9: { halign: 'right' },
+            10: { halign: 'right' }, 11: { halign: 'right' }, 12: { halign: 'right' },
+            13: { halign: 'right', font: 'Roboto', fontStyle: 'normal', fontSize: 8 },
+          },
+          didParseCell: function(data) {
+            if (data.section === 'body') {
+              const rowInfo = tableBody[data.row.index];
+              if (rowInfo && rowInfo.isPayee) {
+                data.cell.styles.fillColor = [241, 245, 249];
+                data.cell.styles.font = 'Roboto';
+                data.cell.styles.fontStyle = 'normal';
+                data.cell.styles.fontSize = 8;
+                data.cell.styles.textColor = [15, 23, 42];
+              }
+            }
+          },
+        });
+
+        // Grand total summary at bottom
+        const finalY = doc.lastAutoTable.finalY + 8;
+        doc.setFontSize(11);
+        doc.setTextColor(99, 102, 241);
+        doc.text(`Yıllık Toplam Gider: ${formatMoney(grandTotal)}`, 14, finalY);
+
+        doc.save(`Yillik_Gider_Listesi_${year}.pdf`);
+
+      } else if (activeTab === 'monthly') {
+        // Aylık Gider Raporu PDF
+        const doc = new jsPDF();
+        doc.setLanguage('tr');
+        doc.setDocumentProperties({
+          title: `Aylık Gider Raporu - ${MONTHS[selectedMonth]} ${selectedYear}`,
+          subject: `${MONTHS[selectedMonth]} ${selectedYear} aylık gelir, gider ve kategori bazlı analiz raporu`,
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.setFont('Roboto');
+        doc.setFontSize(18);
+        doc.text(`Aylık Gider Raporu - ${MONTHS[selectedMonth]} ${selectedYear}`, 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+        const { catStats, payeeStats, totalIncome, totalExpense, balance } = getMonthlyStats();
+
+        // Summary box
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Özet', 14, 42);
+
+        autoTable(doc, {
+          startY: 46,
+          head: [['', 'Tutar']],
+          body: [
+            ['Gelir', formatMoney(totalIncome)],
+            ['Gider', formatMoney(totalExpense)],
+            ['Bakiye', formatMoney(balance)],
+          ],
+          styles: { font: 'Roboto', fontSize: 10 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          columnStyles: { 1: { halign: 'right' } },
+          didParseCell: function(data) {
+            if (data.section === 'body') {
+              if (data.row.index === 0) data.cell.styles.textColor = [16, 185, 129]; // green for income
+              if (data.row.index === 1) data.cell.styles.textColor = [239, 68, 68]; // red for expense
+              if (data.row.index === 2) data.cell.styles.textColor = balance >= 0 ? [16, 185, 129] : [239, 68, 68];
+            }
+          },
+        });
+
+        // Category breakdown table
+        let y = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Kategori Bazlı Giderler', 14, y);
+
+        const catTotalAmount = catStats.reduce((s, d) => s + d.value, 0);
+        autoTable(doc, {
+          startY: y + 4,
+          head: [['Kategori', 'Tutar', 'Yüzde']],
+          body: catStats.map(d => [
+            d.name,
+            formatMoney(d.value),
+            catTotalAmount > 0 ? `${((d.value / catTotalAmount) * 100).toFixed(1)}%` : '0%',
+          ]),
+          foot: [['Toplam', formatMoney(catTotalAmount), '100%']],
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+        });
+
+        // Payee breakdown table
+        y = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Harcama Yeri Bazlı Giderler', 14, y);
+
+        const payeeTotalAmount = payeeStats.reduce((s, d) => s + d.value, 0);
+        autoTable(doc, {
+          startY: y + 4,
+          head: [['Harcama Yeri', 'Tutar', 'Yüzde']],
+          body: payeeStats.map(d => [
+            d.name,
+            formatMoney(d.value),
+            payeeTotalAmount > 0 ? `${((d.value / payeeTotalAmount) * 100).toFixed(1)}%` : '0%',
+          ]),
+          foot: [['Toplam', formatMoney(payeeTotalAmount), '100%']],
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
+        });
+
+        doc.save(`Aylik_Gider_Raporu_${MONTHS[selectedMonth]}_${selectedYear}.pdf`);
+
+      } else if (activeTab === 'compare') {
+        // Karşılaştırmalı Analiz PDF
+        const doc = new jsPDF();
+        doc.setLanguage('tr');
+        doc.setDocumentProperties({
+          title: `Karşılaştırmalı Analiz`,
+          subject: `Dönem karşılaştırma raporu`,
+          author: 'Aile Bütçesi',
+          creator: 'Aile Bütçesi Finans Yönetimi',
+        });
+        doc.addFileToVFS('Roboto-Regular.ttf', robotoBase64);
+        doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+        doc.setFont('Roboto');
+        doc.setFontSize(18);
+        doc.text('Karşılaştırmalı Analiz', 14, 22);
+        doc.setFontSize(10);
+        doc.text(`Tarih: ${new Date().toLocaleDateString('tr-TR')}`, 14, 30);
+
+        const { labelA, labelB, catCompare, payeeCompare, statsA, statsB, totalChangeExpense, totalChangeIncome } = getCompareStats();
+
+        // Summary table
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Dönem Özeti', 14, 42);
+
+        autoTable(doc, {
+          startY: 46,
+          head: [['', labelA, labelB, 'Değişim']],
+          body: [
+            ['Gelir', formatMoney(statsA.totalIncome), formatMoney(statsB.totalIncome), `${totalChangeIncome >= 0 ? '+' : ''}${totalChangeIncome.toFixed(1)}%`],
+            ['Gider', formatMoney(statsA.totalExpense), formatMoney(statsB.totalExpense), `${totalChangeExpense >= 0 ? '+' : ''}${totalChangeExpense.toFixed(1)}%`],
+          ],
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+        });
+
+        // Category comparison table
+        let y = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Kategori Bazlı Karşılaştırma', 14, y);
+
+        autoTable(doc, {
+          startY: y + 4,
+          head: [['Kategori', labelA, labelB, 'Değişim']],
+          body: catCompare.map(d => [
+            d.name,
+            formatMoney(d[labelA]),
+            formatMoney(d[labelB]),
+            `${d.change >= 0 ? '+' : ''}${d.change.toFixed(1)}%`,
+          ]),
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+          didParseCell: function(data) {
+            if (data.section === 'body' && data.column.index === 3) {
+              const row = catCompare[data.row.index];
+              if (row) {
+                data.cell.styles.textColor = row.change > 0 ? [239, 68, 68] : row.change < 0 ? [16, 185, 129] : [100, 116, 139];
+              }
+            }
+          },
+        });
+
+        // Payee comparison table
+        y = doc.lastAutoTable.finalY + 10;
+        doc.setFontSize(12);
+        doc.setTextColor(15, 23, 42);
+        doc.text('Harcama Yeri Bazlı Karşılaştırma', 14, y);
+
+        autoTable(doc, {
+          startY: y + 4,
+          head: [['Harcama Yeri', labelA, labelB, 'Değişim']],
+          body: payeeCompare.map(d => [
+            d.name,
+            formatMoney(d[labelA]),
+            formatMoney(d[labelB]),
+            `${d.change >= 0 ? '+' : ''}${d.change.toFixed(1)}%`,
+          ]),
+          styles: { font: 'Roboto', fontSize: 9 },
+          headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
+          columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' }, 3: { halign: 'right' } },
+          didParseCell: function(data) {
+            if (data.section === 'body' && data.column.index === 3) {
+              const row = payeeCompare[data.row.index];
+              if (row) {
+                data.cell.styles.textColor = row.change > 0 ? [239, 68, 68] : row.change < 0 ? [16, 185, 129] : [100, 116, 139];
+              }
+            }
+          },
+        });
+
+        doc.save(`Karsilastirmali_Analiz_${new Date().toISOString().split('T')[0]}.pdf`);
+      }
     } catch (err) { console.error(err); }
   };
 
@@ -592,6 +968,251 @@ export default function Reports() {
       </div>
     );
   };
+
+  const renderCompareTab = () => {
+    const { statsA, statsB, labelA, labelB, catCompare, payeeCompare, totalChangeExpense, totalChangeIncome } = getCompareStats();
+    const currentYear = new Date().getFullYear();
+    const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1];
+
+    const ChangeIcon = ({ val }) => {
+      if (val > 0) return <ArrowUpRight size={14} className="text-red-500" />;
+      if (val < 0) return <ArrowDownRight size={14} className="text-emerald-500" />;
+      return <Minus size={14} className="text-gray-400" />;
+    };
+
+    const ChangeBadge = ({ val }) => {
+      const color = val > 0 ? 'text-red-500 bg-red-50' : val < 0 ? 'text-emerald-500 bg-emerald-50' : 'text-gray-500 bg-gray-50';
+      return (
+        <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-black ${color}`}>
+          <ChangeIcon val={val} />
+          {val >= 0 ? '+' : ''}{val.toFixed(1)}%
+        </span>
+      );
+    };
+
+    const CustomTooltip = ({ active, payload, label }) => {
+      if (!active || !payload?.length) return null;
+      const item = catCompare.find(c => c.name === label) || payeeCompare.find(p => p.name === label);
+      return (
+        <div className="p-3 rounded-2xl border-none shadow-xl" style={{ background: 'var(--bg-card)', color: 'var(--text-primary)' }}>
+          <p className="text-xs font-black mb-2">{label}</p>
+          {payload.map((p, i) => (
+            <div key={i} className="flex items-center gap-2 text-xs">
+              <span className="w-2 h-2 rounded-full" style={{ background: p.fill || p.color }} />
+              <span className="text-[var(--text-muted)]">{p.name}:</span>
+              <span className="font-black">{formatMoney(p.value)}</span>
+            </div>
+          ))}
+          {item && (
+            <div className="mt-2 pt-2 border-t border-[var(--border)]">
+              <span className="text-[10px] text-[var(--text-muted)]">Değişim: </span>
+              <ChangeBadge val={item.change} />
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    if (compareLoading) return <div className="flex justify-center py-20"><div className="w-10 h-10 border-4 rounded-full animate-spin border-indigo-500/20 border-t-indigo-500" /></div>;
+
+    return (
+      <div className="space-y-6 animate-fade-in">
+        {/* Period Selectors */}
+        <div className="card p-5">
+          <div className="flex flex-col md:flex-row items-center gap-4">
+            <div className="flex items-center gap-3 flex-1 w-full">
+              <div className="flex items-center gap-2 bg-indigo-500/5 border-2 border-indigo-500/20 rounded-2xl px-4 py-3 flex-1">
+                <div className="w-3 h-3 rounded-full bg-indigo-500" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-indigo-500 mr-2">Dönem A</span>
+                <select value={compareMonthA} onChange={e => setCompareMonthA(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border-none text-sm font-bold focus:ring-2 ring-indigo-500/20"
+                >
+                  {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                </select>
+                <select value={compareYearA} onChange={e => setCompareYearA(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border-none text-sm font-bold focus:ring-2 ring-indigo-500/20"
+                >
+                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-[var(--bg-secondary)] flex items-center justify-center border border-[var(--border)]">
+                <GitCompareArrows size={18} className="text-[var(--text-muted)]" />
+              </div>
+            </div>
+
+            <div className="flex items-center gap-3 flex-1 w-full">
+              <div className="flex items-center gap-2 bg-emerald-500/5 border-2 border-emerald-500/20 rounded-2xl px-4 py-3 flex-1">
+                <div className="w-3 h-3 rounded-full bg-emerald-500" />
+                <span className="text-[10px] font-black uppercase tracking-wider text-emerald-500 mr-2">Dönem B</span>
+                <select value={compareMonthB} onChange={e => setCompareMonthB(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border-none text-sm font-bold focus:ring-2 ring-emerald-500/20"
+                >
+                  {MONTHS.map((m, i) => <option key={i} value={i}>{m}</option>)}
+                </select>
+                <select value={compareYearB} onChange={e => setCompareYearB(Number(e.target.value))}
+                  className="px-3 py-1.5 rounded-xl bg-[var(--bg-secondary)] border-none text-sm font-bold focus:ring-2 ring-emerald-500/20"
+                >
+                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="card p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Gider ({labelA})</p>
+            <p className="text-lg font-black text-red-500">{formatMoney(statsA.totalExpense)}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Gider ({labelB})</p>
+            <p className="text-lg font-black text-red-500">{formatMoney(statsB.totalExpense)}</p>
+          </div>
+          <div className="card p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Gider Değişimi</p>
+            <div className="flex items-center gap-2">
+              <p className={`text-lg font-black ${totalChangeExpense > 0 ? 'text-red-500' : totalChangeExpense < 0 ? 'text-emerald-500' : 'text-gray-500'}`}>
+                {totalChangeExpense >= 0 ? '+' : ''}{totalChangeExpense.toFixed(1)}%
+              </p>
+              <ChangeIcon val={totalChangeExpense} />
+            </div>
+          </div>
+          <div className="card p-4">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[var(--text-muted)] mb-1">Gelir Değişimi</p>
+            <div className="flex items-center gap-2">
+              <p className={`text-lg font-black ${totalChangeIncome > 0 ? 'text-emerald-500' : totalChangeIncome < 0 ? 'text-red-500' : 'text-gray-500'}`}>
+                {totalChangeIncome >= 0 ? '+' : ''}{totalChangeIncome.toFixed(1)}%
+              </p>
+              <ChangeIcon val={-totalChangeIncome} />
+            </div>
+          </div>
+        </div>
+
+        {/* Category Comparison Chart */}
+        <div className="card p-6">
+          <h3 className="text-base font-black mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+            Kategori Bazlı Karşılaştırma
+          </h3>
+          {catCompare.length === 0 ? (
+            <div className="h-[300px] flex items-center justify-center text-[var(--text-muted)] text-sm">Seçilen dönemlerde gider verisi bulunamadı</div>
+          ) : (
+            <div style={{ height: Math.max(300, catCompare.length * 50) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={catCompare} layout="vertical" margin={{ left: 10, right: 30 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
+                  <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  <Bar dataKey={labelA} fill="#6366f1" radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar dataKey={labelB} fill="#10b981" radius={[0, 4, 4, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Payee Comparison Chart */}
+        <div className="card p-6">
+          <h3 className="text-base font-black mb-6 flex items-center gap-2">
+            <div className="w-2 h-2 rounded-full bg-rose-500" />
+            Harcama Yeri Bazlı Karşılaştırma
+          </h3>
+          {payeeCompare.length === 0 ? (
+            <div className="h-[300px] flex items-center justify-center text-[var(--text-muted)] text-sm">Seçilen dönemlerde gider verisi bulunamadı</div>
+          ) : (
+            <div style={{ height: Math.max(300, payeeCompare.length * 50) }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={payeeCompare} layout="vertical" margin={{ left: 10, right: 30 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="var(--border)" />
+                  <XAxis type="number" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
+                  <YAxis dataKey="name" type="category" width={120} tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                  <Tooltip content={<CustomTooltip />} />
+                  <Legend wrapperStyle={{ fontSize: '12px' }} />
+                  <Bar dataKey={labelA} fill="#6366f1" radius={[0, 4, 4, 0]} barSize={16} />
+                  <Bar dataKey={labelB} fill="#10b981" radius={[0, 4, 4, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+
+        {/* Detailed Comparison Table */}
+        <div className="card p-6">
+          <h3 className="text-base font-black mb-6">Detaylı Karşılaştırma Tablosu</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-[var(--border)]">
+                  <th className="text-left py-3 px-3 text-[var(--text-muted)] text-xs font-bold">Kategori</th>
+                  <th className="text-right py-3 px-3 text-xs font-bold" style={{ color: '#6366f1' }}>{labelA}</th>
+                  <th className="text-right py-3 px-3 text-xs font-bold" style={{ color: '#10b981' }}>{labelB}</th>
+                  <th className="text-right py-3 px-3 text-[var(--text-muted)] text-xs font-bold">Fark</th>
+                  <th className="text-right py-3 px-3 text-[var(--text-muted)] text-xs font-bold">Değişim</th>
+                </tr>
+              </thead>
+              <tbody>
+                {catCompare.map((item, i) => {
+                  const diff = item[labelB] - item[labelA];
+                  return (
+                    <tr key={i} className="border-b border-[var(--border)] hover:bg-[var(--bg-secondary)] transition-colors">
+                      <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{item.name}</td>
+                      <td className="py-3 px-3 text-right text-[var(--text-secondary)]">{formatMoney(item[labelA])}</td>
+                      <td className="py-3 px-3 text-right text-[var(--text-secondary)]">{formatMoney(item[labelB])}</td>
+                      <td className={`py-3 px-3 text-right font-bold ${diff > 0 ? 'text-red-500' : diff < 0 ? 'text-emerald-500' : 'text-gray-400'}`}>
+                        {diff > 0 ? '+' : ''}{formatMoney(diff)}
+                      </td>
+                      <td className="py-3 px-3 text-right"><ChangeBadge val={item.change} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Payee Detailed Table */}
+        <div className="card p-6">
+          <h3 className="text-base font-black mb-6">Harcama Yeri Detaylı Karşılaştırma</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b-2 border-[var(--border)]">
+                  <th className="text-left py-3 px-3 text-[var(--text-muted)] text-xs font-bold">Harcama Yeri</th>
+                  <th className="text-right py-3 px-3 text-xs font-bold" style={{ color: '#6366f1' }}>{labelA}</th>
+                  <th className="text-right py-3 px-3 text-xs font-bold" style={{ color: '#10b981' }}>{labelB}</th>
+                  <th className="text-right py-3 px-3 text-[var(--text-muted)] text-xs font-bold">Fark</th>
+                  <th className="text-right py-3 px-3 text-[var(--text-muted)] text-xs font-bold">Değişim</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payeeCompare.map((item, i) => {
+                  const diff = item[labelB] - item[labelA];
+                  return (
+                    <tr key={i} className="border-b border-[var(--border)] hover:bg-[var(--bg-secondary)] transition-colors">
+                      <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{item.name}</td>
+                      <td className="py-3 px-3 text-right text-[var(--text-secondary)]">{formatMoney(item[labelA])}</td>
+                      <td className="py-3 px-3 text-right text-[var(--text-secondary)]">{formatMoney(item[labelB])}</td>
+                      <td className={`py-3 px-3 text-right font-bold ${diff > 0 ? 'text-red-500' : diff < 0 ? 'text-emerald-500' : 'text-gray-400'}`}>
+                        {diff > 0 ? '+' : ''}{formatMoney(diff)}
+                      </td>
+                      <td className="py-3 px-3 text-right"><ChangeBadge val={item.change} /></td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) return <div className="flex justify-center py-32"><div className="w-12 h-12 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" /></div>;
 
   return (
@@ -627,10 +1248,16 @@ export default function Reports() {
         >
           Aylık Gider Raporu
         </button>
+        <button 
+          onClick={() => setActiveTab('compare')}
+          className={`px-6 py-2.5 text-sm font-bold rounded-xl transition-all duration-300 ${activeTab === 'compare' ? 'bg-[var(--bg-card)] text-[var(--primary)] shadow-md translate-y-0' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'}`}
+        >
+          Karşılaştırmalı Analiz
+        </button>
       </div>
 
       <div className="min-h-[600px]">
-        {activeTab === 'summary' ? renderSummaryTab() : activeTab === 'annual' ? renderAnnualTab() : renderMonthlyTab()}
+        {activeTab === 'summary' ? renderSummaryTab() : activeTab === 'annual' ? renderAnnualTab() : activeTab === 'monthly' ? renderMonthlyTab() : renderCompareTab()}
       </div>
     </div>
   );
