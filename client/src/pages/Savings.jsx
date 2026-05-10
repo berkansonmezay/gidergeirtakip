@@ -178,7 +178,12 @@ export default function Savings() {
     let total = 0;
     goals.forEach(g => {
       if (g.status === 'deleted') return;
-      if (!g.current_amount || g.current_amount <= 0) return;
+      
+      const isTL = (!g.currency || g.currency === '₺') && !GOLD_TYPES.includes(g.metric);
+      const amount = isTL ? (parseFloat(g.current_amount) || parseFloat(g.current_value) || 0) : (parseFloat(g.current_amount) || 0);
+      
+      if (amount <= 0) return;
+
       // Determine which gold type this account uses (stored in currency or metric)
       const goldType = GOLD_TYPES.includes(g.currency) ? g.currency : (GOLD_TYPES.includes(g.metric) ? g.metric : null);
       // Check for foreign currency (USD, EUR)
@@ -188,16 +193,16 @@ export default function Savings() {
       
       if (goldType && goldPrices[goldType] && parseFloat(goldPrices[goldType]) > 0) {
         // Use entered gold price × current amount
-        total += (g.current_amount || 0) * parseFloat(goldPrices[goldType]);
+        total += amount * parseFloat(goldPrices[goldType]);
       } else if (currencyType && goldPrices[currencyType] && parseFloat(goldPrices[currencyType]) > 0) {
         // Use entered currency rate × current amount
-        total += (g.current_amount || 0) * parseFloat(goldPrices[currencyType]);
-      } else if ((!g.currency || g.currency === '₺') && !GOLD_TYPES.includes(g.metric)) {
-        // TL based account - use current_amount directly
-        total += (g.current_amount || 0);
+        total += amount * parseFloat(goldPrices[currencyType]);
+      } else if (isTL) {
+        // TL based account - use amount directly
+        total += amount;
       } else {
         // Fallback to stored current_value
-        total += (g.current_value || 0);
+        total += (parseFloat(g.current_value) || 0);
       }
     });
     return total;
@@ -208,7 +213,11 @@ export default function Savings() {
 
   // Total cost (sum of all current_value = actual investment/maliyet)
   const totalCost = useMemo(() => {
-    return goals.filter(g => g.status !== 'deleted').reduce((s, g) => s + ((g.current_amount > 0) ? (g.current_value || 0) : 0), 0);
+    return goals.filter(g => g.status !== 'deleted').reduce((s, g) => {
+      const isTL = (!g.currency || g.currency === '₺') && !GOLD_TYPES.includes(g.metric);
+      const amount = isTL ? (parseFloat(g.current_amount) || parseFloat(g.current_value) || 0) : (parseFloat(g.current_amount) || 0);
+      return s + (amount > 0 ? (parseFloat(g.current_value) || 0) : 0);
+    }, 0);
   }, [goals]);
 
   // Profit/Loss
