@@ -433,7 +433,7 @@ export default function Savings() {
                         {(goal.metric || (goal.currency && goal.currency !== '₺')) && (
                           <div className="flex items-center gap-2">
                             <input type="number" className="input text-lg font-bold" style={{ flex: 1 }} 
-                              placeholder="Birim Fiyat" value={addValue} onChange={(e) => setAddValue(e.target.value)} />
+                              placeholder="Birim Fiyat (1 Adet)" value={addValue} onChange={(e) => setAddValue(e.target.value)} />
                             <span className="text-[10px] font-bold px-2 py-1 bg-[var(--bg-primary)] rounded border border-[var(--border)] w-14 text-center" style={{ color: 'var(--text-secondary)' }}>
                               ₺
                             </span>

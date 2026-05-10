@@ -78,6 +78,26 @@ export default function Sidebar({ isOpen, onClose }) {
                 {!collapsed && <span>{item.label}</span>}
               </NavLink>
             ))}
+            
+            {/* Admin only menu */}
+            {useAuthStore().user?.role === 'admin' && (
+              <NavLink
+                to="/admin/users"
+                onClick={onClose}
+                className={({ isActive }) =>
+                  `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 mt-4 border border-indigo-100 dark:border-indigo-900/50
+                  ${isActive
+                    ? 'gradient-primary text-white shadow-md'
+                    : 'hover:bg-[var(--bg-secondary)]'
+                  }
+                  ${collapsed ? 'justify-center' : ''}`
+                }
+                style={({ isActive }) => isActive ? {} : { color: 'var(--text-secondary)' }}
+              >
+                <Users size={20} className="flex-shrink-0" />
+                {!collapsed && <span>Kullanıcı Yönetimi</span>}
+              </NavLink>
+            )}
           </div>
         </nav>
 

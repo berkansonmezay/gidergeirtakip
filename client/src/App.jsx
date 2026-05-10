@@ -16,6 +16,7 @@ import Payees from './pages/Payees';
 import Calendar from './pages/Calendar';
 import Help from './pages/Help';
 import Events from './pages/Events';
+import AdminUsers from './pages/AdminUsers';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
@@ -25,6 +26,13 @@ function ProtectedRoute({ children }) {
 function GuestRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
   return !isAuthenticated ? children : <Navigate to="/" replace />;
+}
+
+function AdminRoute({ children }) {
+  const { isAuthenticated, user } = useAuthStore();
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (user?.role !== 'admin') return <Navigate to="/" replace />;
+  return children;
 }
 
 export default function App() {
@@ -52,6 +60,7 @@ export default function App() {
           <Route path="events" element={<Events />} />
           <Route path="settings" element={<Settings />} />
           <Route path="help" element={<Help />} />
+          <Route path="admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
         </Route>
 
         {/* Catch all */}
