@@ -21,6 +21,7 @@ export default function Installments() {
   const [unpayConfirmId, setUnpayConfirmId] = useState(null);
   const [payDateConfirmId, setPayDateConfirmId] = useState(null);
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [selectedYear, setSelectedYear] = useState('Tümü');
 
   const fetchInstallments = useCallback(async () => {
     try {
@@ -36,6 +37,7 @@ export default function Installments() {
     api.get(`/categories?type=${activeTab}`).then(r => setCategories(r.data.categories)).catch(() => {});
     api.get('/payees').then(r => setPayees(r.data.payees)).catch(() => {});
     setCurrentPage(1);
+    setSelectedYear('Tümü');
   }, [activeTab, fetchInstallments]);
 
   useEffect(() => {
@@ -96,12 +98,22 @@ export default function Installments() {
     }
   };
 
-  const totalUpcoming = installments.reduce((s, i) => s + (i.total_amount - (i.paid_amount || 0)), 0);
-  const grandTotalAmount = installments.reduce((s, i) => s + i.total_amount, 0);
-  const grandTotalPaid = installments.reduce((s, i) => s + (i.paid_amount || 0), 0);
+  const availableYears = [...new Set(installments.map(i => i.start_date.split('-')[0]))].sort((a, b) => b - a);
 
-  const totalPages = Math.ceil(installments.length / ITEMS_PER_PAGE);
-  const paginatedInstallments = installments.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const filteredInstallments = installments.filter(inst => {
+    if (selectedYear === 'Tümü') return true;
+    return inst.start_date.startsWith(selectedYear);
+  });
+
+  const totalUpcoming = filteredInstallments.reduce((s, i) => s + (i.total_amount - (i.paid_amount || 0)), 0);
+  const grandTotalAmount = filteredInstallments.reduce((s, i) => s + i.total_amount, 0);
+  const grandTotalPaid = filteredInstallments.reduce((s, i) => s + (i.paid_amount || 0), 0);
+
+  const totalPages = Math.ceil(filteredInstallments.length / ITEMS_PER_PAGE);
+  const paginatedInstallments = filteredInstallments.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+  // Reset page when filter changes
+  useEffect(() => { setCurrentPage(1); }, [selectedYear]);
 
   return (
     <div className="space-y-5 animate-fade-in">
@@ -111,9 +123,25 @@ export default function Installments() {
             {activeTab === 'expense' ? 'Taksitli Borçlar' : 'Taksitli Alacaklar'}
           </h2>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            {installments.length} kayıt • Toplam kalan tutar: {formatMoney(totalUpcoming)}
+            {filteredInstallments.length} kayıt • Toplam kalan tutar: {formatMoney(totalUpcoming)}
           </p>
         </div>
+        
+        {installments.length > 0 && (
+          <div className="flex items-center">
+            <select 
+              className="select !py-2 font-medium"
+              value={selectedYear}
+              onChange={e => setSelectedYear(e.target.value)}
+              style={{ minWidth: '130px' }}
+            >
+              <option value="Tümü">Tüm Yıllar</option>
+              {availableYears.map(y => (
+                <option key={y} value={y}>{y} Yılı</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -193,7 +221,7 @@ export default function Installments() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between mt-4 px-4 pb-4">
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Toplam {installments.length} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, installments.length)} arası gösteriliyor
+                Toplam {filteredInstallments.length} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filteredInstallments.length)} arası gösteriliyor
               </p>
               <div className="flex items-center gap-1">
                 <button

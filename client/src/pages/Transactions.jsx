@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, FileText, FileSpreadsheet } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { utils } from 'xlsx';
@@ -14,7 +14,7 @@ export default function Transactions() {
   const [categories, setCategories] = useState([]);
   const [payees, setPayees] = useState([]);
   const [currentPage, setCurrentPage] = useState(1);
-  const ITEMS_PER_PAGE = 10;
+  const [itemsPerPage, setItemsPerPage] = useState(10);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState({ type: '', category_id: '', payee_id: '', search: '', start_date: '', end_date: '' });
   const [showFilters, setShowFilters] = useState(false);
@@ -24,6 +24,7 @@ export default function Transactions() {
   const [editItem, setEditItem] = useState(null);
   const [total, setTotal] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [selectedYear, setSelectedYear] = useState('Tümü');
 
   const handleDateRangeClick = (rangeStr) => {
     setActiveDateRange(rangeStr);
@@ -139,14 +140,18 @@ export default function Transactions() {
 
   const handleEdit = (tx) => { setEditItem(tx); setShowForm(true); };
 
+  const availableYears = [...new Set(transactions.map(tx => new Date(tx.date).getFullYear().toString()))].sort((a, b) => b - a);
+
   const filtered = transactions.filter(tx => {
+    if (selectedYear !== 'Tümü' && !tx.date.startsWith(selectedYear)) return false;
+    
     if (!filter.search) return true;
     const s = filter.search.toLowerCase();
     return (tx.description?.toLowerCase().includes(s) || tx.category_name?.toLowerCase().includes(s) || tx.payee_name?.toLowerCase().includes(s));
   });
 
-  const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
-  const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filtered.length / itemsPerPage);
+  const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const totalIncome = filtered.reduce((sum, tx) => sum + (tx.type === 'income' ? tx.amount : 0), 0);
   const totalExpense = filtered.reduce((sum, tx) => sum + (tx.type === 'expense' ? tx.amount : 0), 0);
@@ -256,8 +261,27 @@ export default function Transactions() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-5">
           <div>
             <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>İşlemler</h2>
-            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{total} kayıt bulundu</p>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{filtered.length} kayıt bulundu</p>
           </div>
+          
+          {transactions.length > 0 && (
+            <div className="flex items-center">
+              <select 
+                className="select !py-2 font-medium"
+                value={selectedYear}
+                onChange={e => {
+                  setSelectedYear(e.target.value);
+                  setCurrentPage(1);
+                }}
+                style={{ minWidth: '130px' }}
+              >
+                <option value="Tümü">Tüm Yıllar</option>
+                {availableYears.map(y => (
+                  <option key={y} value={y}>{y} Yılı</option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Filters Area */}
@@ -444,38 +468,85 @@ export default function Transactions() {
           </div>
           
           {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 px-2">
-              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                Toplam {filtered.length} kayıttan {(currentPage - 1) * ITEMS_PER_PAGE + 1}-{Math.min(currentPage * ITEMS_PER_PAGE, filtered.length)} arası gösteriliyor
-              </p>
-              <div className="flex items-center gap-1">
-                <button
-                  disabled={currentPage === 1}
-                  onClick={() => setCurrentPage(prev => prev - 1)}
-                  className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                
-                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
-                  <button
-                    key={page}
-                    onClick={() => setCurrentPage(page)}
-                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === page ? 'gradient-primary text-white shadow-md' : 'btn-ghost'}`}
-                    style={currentPage === page ? {} : { color: 'var(--text-secondary)' }}
-                  >
-                    {page}
-                  </button>
-                ))}
+          {filtered.length > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mt-4 px-4 py-3" style={{ borderTop: '1px solid var(--border)' }}>
+              <div>
+                <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  Toplam: {filtered.length}
+                </p>
+              </div>
 
-                <button
-                  disabled={currentPage === totalPages}
-                  onClick={() => setCurrentPage(prev => prev + 1)}
-                  className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
-                >
-                  <ChevronRight size={16} />
-                </button>
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(1)}
+                      className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
+                      title="İlk Sayfa"
+                    >
+                      <ChevronsLeft size={16} />
+                    </button>
+                    <button
+                      disabled={currentPage === 1}
+                      onClick={() => setCurrentPage(prev => prev - 1)}
+                      className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
+                      title="Önceki"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    
+                    {Array.from({ length: totalPages }, (_, i) => i + 1)
+                      .filter(page => page === 1 || page === totalPages || Math.abs(currentPage - page) <= 1)
+                      .map((page, i, arr) => (
+                        <div key={page} className="flex items-center">
+                          {i > 0 && arr[i - 1] !== page - 1 && <span className="px-1 text-gray-400">...</span>}
+                          <button
+                            onClick={() => setCurrentPage(page)}
+                            className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === page ? 'gradient-primary text-white shadow-md' : 'btn-ghost'}`}
+                            style={currentPage === page ? {} : { color: 'var(--text-secondary)' }}
+                          >
+                            {page}
+                          </button>
+                        </div>
+                    ))}
+
+                    <button
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(prev => prev + 1)}
+                      className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
+                      title="Sonraki"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                    <button
+                      disabled={currentPage === totalPages}
+                      onClick={() => setCurrentPage(totalPages)}
+                      className="btn btn-icon btn-ghost btn-sm disabled:opacity-30"
+                      title="Son Sayfa"
+                    >
+                      <ChevronsRight size={16} />
+                    </button>
+                  </div>
+                )}
+                
+                <div className="relative">
+                  <select 
+                    className="select !py-1.5 !pl-3 !pr-8 text-sm cursor-pointer appearance-none bg-white font-medium"
+                    value={itemsPerPage}
+                    onChange={(e) => {
+                      setItemsPerPage(Number(e.target.value));
+                      setCurrentPage(1);
+                    }}
+                    style={{ minHeight: '34px', borderColor: 'var(--border)' }}
+                  >
+                    <option value={5}>5</option>
+                    <option value={10}>10</option>
+                    <option value={25}>25</option>
+                    <option value={50}>50</option>
+                    <option value={100}>100</option>
+                  </select>
+                </div>
               </div>
             </div>
           )}
