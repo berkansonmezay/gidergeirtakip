@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, CreditCard, Check, ChevronDown, ChevronUp, Trash2, X, Calendar, Bell, BellOff } from 'lucide-react';
+import { Plus, CreditCard, Check, ChevronDown, ChevronUp, Trash2, X, Calendar, Bell, BellOff, Edit3 } from 'lucide-react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../services/api';
 
@@ -14,7 +14,10 @@ export default function Installments() {
   const ITEMS_PER_PAGE = 10;
   const [loading, setLoading] = useState(true);
   const [categories, setCategories] = useState([]);
+  const [payees, setPayees] = useState([]);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
+  const [editItem, setEditItem] = useState(null);
+  const [editForm, setEditForm] = useState({ description: '', category_id: '', payee_id: '' });
   const [unpayConfirmId, setUnpayConfirmId] = useState(null);
   const [payDateConfirmId, setPayDateConfirmId] = useState(null);
   const [payDate, setPayDate] = useState(new Date().toISOString().split('T')[0]);
@@ -31,8 +34,9 @@ export default function Installments() {
   useEffect(() => {
     fetchInstallments();
     api.get(`/categories?type=${activeTab}`).then(r => setCategories(r.data.categories)).catch(() => {});
+    api.get('/payees').then(r => setPayees(r.data.payees)).catch(() => {});
     setCurrentPage(1);
-  }, [activeTab]);
+  }, [activeTab, fetchInstallments]);
 
   useEffect(() => {
     const handleRefresh = () => fetchInstallments();
@@ -78,6 +82,18 @@ export default function Installments() {
       alert(err.response?.data?.error || 'Silme işlemi başarısız oldu.');
     }
     setDeleteConfirmId(null);
+  };
+
+  const submitEdit = async () => {
+    if (!editForm.description) return alert("Açıklama boş olamaz.");
+    try {
+      await api.put(`/installments/${editItem.id}`, editForm);
+      setEditItem(null);
+      await fetchInstallments();
+      window.dispatchEvent(new Event('transaction-added'));
+    } catch (err) {
+      alert(err.response?.data?.error || "Güncelleme başarısız oldu.");
+    }
   };
 
   const totalUpcoming = installments.reduce((s, i) => s + (i.total_amount - (i.paid_amount || 0)), 0);
@@ -140,6 +156,17 @@ export default function Installments() {
                     }} 
                     onUnpay={(paymentId) => setUnpayConfirmId(paymentId)} 
                     onDelete={() => setDeleteConfirmId(inst.id)} 
+                    onEdit={() => {
+                      setEditItem(inst);
+                      setEditForm({
+                        description: inst.description || '',
+                        category_id: inst.category_id || '',
+                        payee_id: inst.payee_id || '',
+                        total_amount: inst.total_amount || 0,
+                        installment_count: inst.installment_count || 1,
+                        start_date: inst.start_date || new Date().toISOString().split('T')[0]
+                      });
+                    }}
                     delay={i} 
                     activeTab={activeTab} 
                   />
@@ -199,6 +226,96 @@ export default function Installments() {
             </div>
           )}
         </div>
+      )}
+
+      {/* Edit Modal */}
+      {editItem && createPortal(
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setEditItem(null)}>
+          <div className="modal-content p-0 overflow-hidden max-w-md">
+            <div className={`p-5 text-white ${activeTab === 'income' ? 'gradient-income' : 'gradient-expense'}`}>
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold">Taksit Düzenle</h2>
+                <button onClick={() => setEditItem(null)} className="p-1 rounded-lg hover:bg-white/20 transition-colors"><X size={20} /></button>
+              </div>
+            </div>
+            
+            <div className="p-5 space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Toplam Tutar (₺)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  className="input text-2xl font-bold text-center"
+                  value={editForm.total_amount}
+                  onChange={e => setEditForm({ ...editForm, total_amount: e.target.value })}
+                  style={{ fontSize: '1.5rem', padding: '14px' }}
+                />
+              </div>
+
+              <div className="p-4 rounded-2xl border transition-all" style={{ borderColor: 'var(--border)', background: 'var(--bg-secondary)' }}>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Taksit Sayısı</label>
+                    <input
+                      type="number"
+                      min="2"
+                      max="60"
+                      className="input !py-2"
+                      value={editForm.installment_count}
+                      onChange={(e) => setEditForm({ ...editForm, installment_count: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>İlk Taksit</label>
+                    <input
+                      type="date"
+                      className="input !py-2 !text-[11px]"
+                      value={editForm.start_date}
+                      onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1 uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Taksit Tutarı</label>
+                    <div className="h-10 flex items-center px-2 rounded-xl font-bold text-[13px]" style={{ background: 'var(--bg-primary)', color: 'var(--primary)' }}>
+                      ₺{editForm.total_amount && editForm.installment_count ? (parseFloat(editForm.total_amount) / parseInt(editForm.installment_count)).toFixed(2) : '0.00'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>{activeTab === 'expense' ? 'Harcama Yeri' : 'Tahsil Yeri'}</label>
+                  <select className="select" value={editForm.payee_id} onChange={e => setEditForm({ ...editForm, payee_id: e.target.value })}>
+                    <option value="">Seçiniz</option>
+                    {payees.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Kategori</label>
+                  <select className="select" value={editForm.category_id} onChange={e => setEditForm({ ...editForm, category_id: e.target.value })}>
+                    <option value="">Seçiniz</option>
+                    {categories.map(c => <option key={c.id} value={c.id}>{c.icon} {c.name}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>Açıklama</label>
+                <input className="input" placeholder="İşlem açıklaması..." value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} />
+              </div>
+
+              <button
+                onClick={submitEdit}
+                className={`btn w-full btn-lg text-white font-semibold mt-4 ${activeTab === 'income' ? 'gradient-income' : 'gradient-expense'}`}
+                style={{ borderRadius: '12px' }}
+              >
+                Değişiklikleri Kaydet
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Delete Confirmation */}
@@ -266,7 +383,7 @@ export default function Installments() {
   );
 }
 
-function InstallmentGroupRow({ inst, onPay, onUnpay, onDelete, delay, activeTab }) {
+function InstallmentGroupRow({ inst, onPay, onUnpay, onDelete, onEdit, delay, activeTab }) {
   const [expanded, setExpanded] = useState(false);
   const isComplete = inst.paid_amount >= inst.total_amount;
   
@@ -333,7 +450,14 @@ function InstallmentGroupRow({ inst, onPay, onUnpay, onDelete, delay, activeTab 
               {inst.reminder_enabled ? <Bell size={15} fill="currentColor" /> : <BellOff size={15} />}
             </button>
             <button 
-              onClick={onDelete} 
+              onClick={(e) => { e.stopPropagation(); onEdit(); }} 
+              className="btn-icon btn-ghost btn-sm" 
+              title="Düzenle"
+            >
+              <Edit3 size={15} />
+            </button>
+            <button 
+              onClick={(e) => { e.stopPropagation(); onDelete(); }} 
               className="btn-icon btn-ghost btn-sm hover:!text-red-500" 
               title="Tüm kaydı sil"
             >

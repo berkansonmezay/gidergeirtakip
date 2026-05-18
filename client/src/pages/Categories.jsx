@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Edit3, X } from 'lucide-react';
+import { Plus, Trash2, Edit3, X, Search } from 'lucide-react';
 import api from '../services/api';
 
 function formatMoney(n) { return new Intl.NumberFormat('tr-TR', { style: 'currency', currency: 'TRY', minimumFractionDigits: 0 }).format(n); }
@@ -31,6 +31,7 @@ export default function Categories() {
   const [showForm, setShowForm] = useState(false);
   const [editItem, setEditItem] = useState(null);
   const [typeFilter, setTypeFilter] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
 
   const fetchCategories = async () => {
@@ -52,7 +53,12 @@ export default function Categories() {
     } catch {}
   };
 
-  const filtered = categories.filter(c => !typeFilter || c.type === typeFilter);
+  const filtered = categories.filter(c => {
+    const matchesType = !typeFilter || c.type === typeFilter;
+    const catName = c.name || '';
+    const matchesSearch = catName.toLowerCase().includes((searchQuery || '').toLowerCase());
+    return matchesType && matchesSearch;
+  });
   const incomeCount = categories.filter(c => c.type === 'income').length;
   const expenseCount = categories.filter(c => c.type === 'expense').length;
 
@@ -66,11 +72,23 @@ export default function Categories() {
         <button onClick={() => { setEditItem(null); setShowForm(true); }} className="btn btn-primary"><Plus size={18} /> Yeni Kategori</button>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2">
-        {[{ val: '', label: 'Tümü' }, { val: 'expense', label: '🔴 Gider' }, { val: 'income', label: '🟢 Gelir' }].map(f => (
-          <button key={f.val} onClick={() => setTypeFilter(f.val)} className={`btn btn-sm ${typeFilter === f.val ? 'btn-primary' : 'btn-secondary'}`}>{f.label}</button>
-        ))}
+      {/* Filters and Search */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="flex gap-2">
+          {[{ val: '', label: 'Tümü' }, { val: 'expense', label: '🔴 Gider' }, { val: 'income', label: '🟢 Gelir' }].map(f => (
+            <button key={f.val} onClick={() => setTypeFilter(f.val)} className={`btn btn-sm ${typeFilter === f.val ? 'btn-primary' : 'btn-secondary'}`}>{f.label}</button>
+          ))}
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-64">
+          <Search size={18} style={{ color: 'var(--text-muted)' }} className="flex-shrink-0" />
+          <input
+            type="text"
+            className="input w-full"
+            placeholder="Kategori Ara..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       {loading ? (

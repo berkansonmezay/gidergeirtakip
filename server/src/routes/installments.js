@@ -169,8 +169,12 @@ router.post('/', async (req, res) => {
     if (!description || !total_amount || !installment_count || !start_date) return res.status(400).json({ error: 'Zorunlu alanlar eksik.' });
     
     const monthly = Math.ceil((Number(total_amount) / Number(installment_count)) * 100) / 100;
-    const sd = new Date(start_date);
-    const npd = new Date(sd.getFullYear(), sd.getMonth() + 1, sd.getDate());
+    const [sYear, sMonth, sDay] = start_date.split('-');
+    const sy = Number(sYear);
+    const sm = Number(sMonth) - 1;
+    const sdDay = Number(sDay);
+    
+    const npd = new Date(Date.UTC(sy, sm, sdDay));
     
     const newInst = {
       description,
@@ -193,7 +197,7 @@ router.post('/', async (req, res) => {
     
     const batch = db.batch();
     for (let i = 1; i <= Number(installment_count); i++) {
-      const d = new Date(sd.getFullYear(), sd.getMonth() + i, sd.getDate());
+      const d = new Date(Date.UTC(sy, sm + (i - 1), sdDay));
       const pRef = db.collection('installment_payments').doc();
       batch.set(pRef, {
         installment_id: iid,
@@ -207,6 +211,101 @@ router.post('/', async (req, res) => {
     await batch.commit();
     
     res.status(201).json({ message: 'Taksit oluşturuldu.', installment: { id: iid, ...newInst } });
+  } catch (err) { console.error(err); res.status(500).json({ error: 'Hata oluştu.' }); }
+});
+
+router.put('/:id', async (req, res) => {
+  try {
+    const { description, category_id, payee_id, total_amount, installment_count, start_date } = req.body;
+    const docRef = db.collection('installments').doc(req.params.id);
+    const doc = await docRef.get();
+    
+    if (!doc.exists || doc.data().user_id !== req.user.id) {
+      return res.status(404).json({ error: 'Bulunamadı.' });
+    }
+    
+    const inst = doc.data();
+    const updates = {};
+    if (description !== undefined) updates.description = description;
+    if (category_id !== undefined) updates.category_id = category_id ? String(category_id) : null;
+    if (payee_id !== undefined) updates.payee_id = payee_id ? String(payee_id) : null;
+
+    let recalculatePayments = false;
+    let newTotal = inst.total_amount;
+    let newCount = inst.installment_count;
+    let newStart = inst.start_date;
+
+    if (total_amount !== undefined && Number(total_amount) !== inst.total_amount) { newTotal = Number(total_amount); recalculatePayments = true; }
+    if (installment_count !== undefined && Number(installment_count) !== inst.installment_count) { newCount = Number(installment_count); recalculatePayments = true; }
+    if (start_date !== undefined && start_date !== inst.start_date) { newStart = start_date; recalculatePayments = true; }
+
+    const batch = db.batch();
+
+    if (recalculatePayments) {
+      const paySnap = await db.collection('installment_payments').where('installment_id', '==', req.params.id).get();
+      const payments = paySnap.docs.map(d => ({ id: d.id, ...d.data() })).sort((a, b) => a.payment_number - b.payment_number);
+      
+      const paidPayments = payments.filter(p => p.is_paid === 1);
+      const paidCount = paidPayments.length;
+      
+      if (newCount < paidCount) {
+        return res.status(400).json({ error: 'Taksit sayısı ödenmiş taksit sayısından az olamaz.' });
+      }
+
+      const monthly = Math.ceil((newTotal / newCount) * 100) / 100;
+      
+      const unpaidPayments = payments.filter(p => p.is_paid === 0);
+      unpaidPayments.forEach(p => {
+        batch.delete(db.collection('installment_payments').doc(p.id));
+      });
+
+      const [nYear, nMonth, nDay] = newStart.split('-');
+      const ny = Number(nYear);
+      const nm = Number(nMonth) - 1;
+      const ndDay = Number(nDay);
+      
+      for (let i = 1; i <= newCount; i++) {
+        const d = new Date(Date.UTC(ny, nm + (i - 1), ndDay));
+        const existingPaid = paidPayments.find(p => p.payment_number === i);
+        
+        if (existingPaid) {
+          batch.update(db.collection('installment_payments').doc(existingPaid.id), {
+            amount: monthly,
+            due_date: d.toISOString().split('T')[0]
+          });
+          const txSnap = await db.collection('transactions').where('installment_payment_id', '==', existingPaid.id).get();
+          txSnap.docs.forEach(txDoc => {
+            batch.update(db.collection('transactions').doc(txDoc.id), {
+              amount: monthly
+            });
+          });
+        } else {
+          const pRef = db.collection('installment_payments').doc();
+          batch.set(pRef, {
+            installment_id: req.params.id,
+            payment_number: i,
+            amount: monthly,
+            due_date: d.toISOString().split('T')[0],
+            is_paid: 0,
+            paid_date: null
+          });
+        }
+      }
+
+      updates.total_amount = newTotal;
+      updates.installment_count = newCount;
+      updates.monthly_amount = monthly;
+      updates.start_date = newStart;
+      
+      const nextD = new Date(Date.UTC(ny, nm + paidCount, ndDay));
+      updates.next_payment_date = paidCount < newCount ? nextD.toISOString().split('T')[0] : inst.next_payment_date;
+      updates.status = paidCount >= newCount ? 'completed' : 'active';
+    }
+    
+    batch.update(docRef, updates);
+    await batch.commit();
+    
+    res.json({ message: 'Taksit güncellendi.', installment: { id: doc.id, ...doc.data(), ...updates } });
   } catch (err) { console.error(err); res.status(500).json({ error: 'Hata oluştu.' }); }
 });
 
