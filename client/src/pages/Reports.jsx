@@ -15,6 +15,7 @@ export default function Reports() {
   const [trendData, setTrendData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [catTotal, setCatTotal] = useState(0);
+  const [exportingPDF, setExportingPDF] = useState(false);
 
   // Annual Report State
   const [year, setYear] = useState(new Date().getFullYear());
@@ -228,6 +229,7 @@ export default function Reports() {
   };
 
   const handleExportPDF = async () => {
+    setExportingPDF(true);
     try {
       const { default: jsPDF } = await import('jspdf');
       const { default: autoTable } = await import('jspdf-autotable');
@@ -283,6 +285,54 @@ export default function Reports() {
           footStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [241, 245, 249], textColor: [15, 23, 42], halign: 'right' },
           columnStyles: { 1: { halign: 'right' }, 3: { halign: 'right' } },
         });
+
+        // Add graphs to the summary report
+        try {
+          const html2canvas = (await import('html2canvas')).default;
+          
+          const captureCard = async (id) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            const canvas = await html2canvas(el, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: null,
+              logging: false
+            });
+            return canvas.toDataURL('image/png');
+          };
+
+          const trendImg = await captureCard('chart-trend');
+          const monthlyImg = await captureCard('chart-monthly');
+          const categoryImg = await captureCard('chart-category');
+
+          if (trendImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Grafikler ve Analizler', 14, 20);
+            doc.addImage(trendImg, 'PNG', 14, 26, 182, 100);
+            
+            if (monthlyImg) {
+              doc.addImage(monthlyImg, 'PNG', 14, 136, 182, 95);
+            }
+          } else if (monthlyImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Grafikler ve Analizler', 14, 20);
+            doc.addImage(monthlyImg, 'PNG', 14, 26, 182, 95);
+          }
+
+          if (categoryImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Kategori Dağılımı Analizi', 14, 20);
+            doc.addImage(categoryImg, 'PNG', 14, 26, 182, 110);
+          }
+        } catch (graphErr) {
+          console.error('Error adding graphs to PDF:', graphErr);
+        }
+
         doc.save(`Aile_Butcesi_Ozet_Rapor_${new Date().toISOString().split('T')[0]}.pdf`);
 
       } else if (activeTab === 'annual') {
@@ -548,7 +598,11 @@ export default function Reports() {
 
         doc.save(`Karsilastirmali_Analiz_${new Date().toISOString().split('T')[0]}.pdf`);
       }
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setExportingPDF(false);
+    }
   };
 
   const getAnnualReportData = () => {
@@ -617,7 +671,7 @@ export default function Reports() {
   const renderSummaryTab = () => (
     <div className="space-y-6 animate-fade-in">
       {/* Trend chart */}
-      <div className="card p-5">
+      <div id="chart-trend" className="card p-5">
         <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Gelir-Gider Trendi (12 Ay)</h3>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={trendData}>
@@ -634,7 +688,7 @@ export default function Reports() {
       </div>
 
       {/* Monthly bar */}
-      <div className="card p-5">
+      <div id="chart-monthly" className="card p-5">
         <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Aylık Karşılaştırma</h3>
         <ResponsiveContainer width="100%" height={280}>
           <BarChart data={monthlyData}>
@@ -649,7 +703,7 @@ export default function Reports() {
       </div>
 
       {/* Pie + table */}
-      <div className="card p-5">
+      <div id="chart-category" className="card p-5">
         <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Kategori Dağılımı</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
           <div className="h-[240px]">
@@ -1225,7 +1279,18 @@ export default function Reports() {
           <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Finansal durumunuzu analiz edin</p>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={handleExportPDF} className="btn btn-secondary btn-sm h-10 px-4"><Download size={18} /> PDF</button>
+          <button 
+            onClick={handleExportPDF} 
+            disabled={exportingPDF}
+            className="btn btn-secondary btn-sm h-10 px-4 flex items-center gap-2"
+          >
+            {exportingPDF ? (
+              <div className="w-4 h-4 border-2 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin" />
+            ) : (
+              <Download size={18} />
+            )}
+            {exportingPDF ? 'Hazırlanıyor...' : 'PDF'}
+          </button>
           <button onClick={handleExportExcel} className="btn btn-secondary btn-sm h-10 px-4"><FileSpreadsheet size={18} /> Excel</button>
         </div>
       </div>
