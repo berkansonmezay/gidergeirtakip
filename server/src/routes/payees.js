@@ -9,7 +9,7 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
   try {
     const snapshot = await db.collection('payees')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     const payees = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
@@ -49,7 +49,7 @@ router.put('/:id', async (req, res) => {
     const docRef = db.collection('payees').doc(req.params.id);
     const doc = await docRef.get();
 
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Kayıt bulunamadı.' });
     }
 
@@ -67,7 +67,7 @@ router.delete('/:id', async (req, res) => {
     const docRef = db.collection('payees').doc(req.params.id);
     const doc = await docRef.get();
 
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Kayıt bulunamadı.' });
     }
 

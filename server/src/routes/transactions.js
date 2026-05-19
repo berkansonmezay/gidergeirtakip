@@ -33,7 +33,7 @@ router.get('/', async (req, res) => {
     const { type, category_id, payee_id, start_date, end_date, search, limit = 50, offset = 0 } = req.query;
     
     // 1. Fetch transactions
-    let txRef = db.collection('transactions').where('user_id', '==', req.user.id);
+    let txRef = db.collection('transactions').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]);
     
     if (type) txRef = txRef.where('type', '==', type);
     if (category_id) txRef = txRef.where('category_id', '==', String(category_id));
@@ -50,7 +50,7 @@ router.get('/', async (req, res) => {
       });
     
     // 2. Fetch installments
-    let instRef = db.collection('installments').where('user_id', '==', req.user.id);
+    let instRef = db.collection('installments').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]);
     if (type) instRef = instRef.where('type', '==', type);
     if (category_id) instRef = instRef.where('category_id', '==', String(category_id));
     if (payee_id) instRef = instRef.where('payee_id', '==', String(payee_id));
@@ -198,7 +198,7 @@ router.put('/:id', async (req, res) => {
     const docRef = db.collection('transactions').doc(id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'İşlem bulunamadı.' });
     }
 
@@ -244,7 +244,7 @@ router.delete('/:id', async (req, res) => {
     const docRef = db.collection('transactions').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'İşlem bulunamadı.' });
     }
     
@@ -268,7 +268,7 @@ router.get('/summary', async (req, res) => {
     const endDate = new Date(targetYear, targetMonth, 0).toISOString().split('T')[0];
 
     const snapshot = await db.collection('transactions')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     // Remove the strict monthly filter to show all-time totals on the summary cards
@@ -312,11 +312,11 @@ router.get('/summary', async (req, res) => {
 // GET /api/transactions/template
 router.get('/template', async (req, res) => {
   try {
-    const catsSnapshot = await db.collection('categories').where('user_id', '==', req.user.id).get();
+    const catsSnapshot = await db.collection('categories').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]).get();
     const categories = catsSnapshot.docs.map(doc => doc.data());
     categories.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-    const payeesSnapshot = await db.collection('payees').where('user_id', '==', req.user.id).get();
+    const payeesSnapshot = await db.collection('payees').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]).get();
     const payees = payeesSnapshot.docs.map(doc => doc.data());
     payees.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
@@ -448,10 +448,10 @@ router.post('/import', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'Geçersiz şablon yapısı.' });
     }
 
-    const catsSnapshot = await db.collection('categories').where('user_id', '==', req.user.id).get();
+    const catsSnapshot = await db.collection('categories').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]).get();
     const categories = catsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-    const payeesSnapshot = await db.collection('payees').where('user_id', '==', req.user.id).get();
+    const payeesSnapshot = await db.collection('payees').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]).get();
     const payees = payeesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     const categoryMap = {};

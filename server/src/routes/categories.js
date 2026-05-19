@@ -9,7 +9,7 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
   try {
     const { type } = req.query;
-    let categoriesRef = db.collection('categories').where('user_id', '==', req.user.id);
+    let categoriesRef = db.collection('categories').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]);
 
     if (type) {
       categoriesRef = categoriesRef.where('type', '==', type);
@@ -65,7 +65,7 @@ router.put('/:id', async (req, res) => {
     const docRef = db.collection('categories').doc(id);
     const doc = await docRef.get();
 
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Kategori bulunamadı.' });
     }
 
@@ -90,7 +90,7 @@ router.delete('/:id', async (req, res) => {
     const docRef = db.collection('categories').doc(req.params.id);
     const doc = await docRef.get();
 
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Kategori bulunamadı.' });
     }
 
@@ -99,7 +99,7 @@ router.delete('/:id', async (req, res) => {
     // Set transactions to null category
     const txSnapshot = await db.collection('transactions')
       .where('category_id', '==', req.params.id)
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     txSnapshot.docs.forEach(txDoc => {
@@ -121,7 +121,7 @@ router.get('/:id/stats', async (req, res) => {
   try {
     const txSnapshot = await db.collection('transactions')
       .where('category_id', '==', req.params.id)
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
 
     let total_amount = 0;

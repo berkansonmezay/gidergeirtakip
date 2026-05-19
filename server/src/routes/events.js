@@ -10,13 +10,13 @@ router.get('/', async (req, res) => {
   try {
     // 1. Fetch explicit events
     const snapshot = await db.collection('events')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
     const explicitEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // 2. Fetch installments with reminders enabled
     const instSnapshot = await db.collection('installments')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .where('reminder_enabled', '==', true)
       .get();
     
@@ -115,7 +115,7 @@ router.put('/:id', async (req, res) => {
     const docRef = db.collection('events').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Etkinlik bulunamadı.' });
     }
     
@@ -142,7 +142,7 @@ router.delete('/:id', async (req, res) => {
     const docRef = db.collection('events').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Etkinlik bulunamadı.' });
     }
     

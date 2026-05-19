@@ -30,7 +30,7 @@ async function generateTokens(user) {
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
   // Delete existing refresh tokens for this user
-  const tokensSnapshot = await db.collection('refresh_tokens').where('user_id', '==', user.id).get();
+  const tokensSnapshot = await db.collection('refresh_tokens').where('user_id', 'in', [String(user.id), Number(user.id)]).get();
   const batch = db.batch();
   tokensSnapshot.docs.forEach(doc => {
     batch.delete(doc.ref);
@@ -129,7 +129,7 @@ router.post('/refresh', async (req, res) => {
 // POST /api/auth/logout
 router.post('/logout', authenticateToken, async (req, res) => {
   try {
-    const tokensSnapshot = await db.collection('refresh_tokens').where('user_id', '==', req.user.id).get();
+    const tokensSnapshot = await db.collection('refresh_tokens').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]).get();
     const batch = db.batch();
     tokensSnapshot.docs.forEach(doc => {
       batch.delete(doc.ref);

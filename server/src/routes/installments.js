@@ -8,7 +8,7 @@ router.use(authenticateToken);
 router.get('/', async (req, res) => {
   try {
     const { status, type } = req.query;
-    let queryRef = db.collection('installments').where('user_id', '==', req.user.id);
+    let queryRef = db.collection('installments').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]);
     
     if (status) queryRef = queryRef.where('status', '==', status);
     if (type) queryRef = queryRef.where('type', '==', type);
@@ -77,7 +77,7 @@ router.get('/payments/all', async (req, res) => {
   try {
     const { type } = req.query;
     
-    let queryRef = db.collection('installments').where('user_id', '==', req.user.id);
+    let queryRef = db.collection('installments').where('user_id', 'in', [String(req.user.id), Number(req.user.id)]);
     if (type) queryRef = queryRef.where('type', '==', type);
     
     const instSnapshot = await queryRef.get();
@@ -145,7 +145,7 @@ router.get('/:id', async (req, res) => {
     const docRef = db.collection('installments').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     
@@ -220,7 +220,7 @@ router.put('/:id', async (req, res) => {
     const docRef = db.collection('installments').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     
@@ -314,7 +314,7 @@ router.put('/:id/toggle-reminder', async (req, res) => {
     const docRef = db.collection('installments').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     
@@ -430,7 +430,7 @@ router.delete('/:id', async (req, res) => {
     const docRef = db.collection('installments').doc(req.params.id);
     const doc = await docRef.get();
     
-    if (!doc.exists || doc.data().user_id !== req.user.id) {
+    if (!doc.exists || String(doc.data().user_id) !== String(req.user.id)) {
       return res.status(404).json({ error: 'Bulunamadı.' });
     }
     

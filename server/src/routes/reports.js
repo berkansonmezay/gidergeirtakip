@@ -15,7 +15,7 @@ router.get('/monthly', async (req, res) => {
     // We can fetch all transactions for the last N months in one query to save reads
     const startDateAll = new Date(now.getFullYear(), now.getMonth() - parseInt(months) + 1, 1).toISOString().split('T')[0];
     const snapshot = await db.collection('transactions')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     const allTx = snapshot.docs.map(d => d.data()).filter(t => t.date >= startDateAll);
@@ -53,7 +53,7 @@ router.get('/category-breakdown', async (req, res) => {
     const ed = end_date || new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     
     const snapshot = await db.collection('transactions')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     const docs = snapshot.docs.filter(doc => {
@@ -113,7 +113,7 @@ router.get('/trends', async (req, res) => {
     
     const startDateAll = new Date(now.getFullYear(), now.getMonth() - parseInt(months) + 1, 1).toISOString().split('T')[0];
     const snapshot = await db.collection('transactions')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     const allTx = snapshot.docs.map(d => d.data()).filter(t => t.date >= startDateAll);
@@ -147,7 +147,7 @@ router.get('/top-expenses', async (req, res) => {
     const ed = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
     
     const snapshot = await db.collection('transactions')
-      .where('user_id', '==', req.user.id)
+      .where('user_id', 'in', [String(req.user.id), Number(req.user.id)])
       .get();
       
     const txs = snapshot.docs.map(d => ({ id: d.id, ...d.data() }))
