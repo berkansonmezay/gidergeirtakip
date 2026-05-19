@@ -633,43 +633,45 @@ export default function Reports() {
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Monthly bar */}
-        <div className="card p-5">
-          <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Aylık Karşılaştırma</h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <BarChart data={monthlyData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-              <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
-              <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
-              <Tooltip formatter={v => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', fontSize: '13px' }} />
-              <Bar dataKey="income" name="Gelir" fill="#10b981" radius={[4,4,0,0]} />
-              <Bar dataKey="expense" name="Gider" fill="#ef4444" radius={[4,4,0,0]} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
+      {/* Monthly bar */}
+      <div className="card p-5">
+        <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Aylık Karşılaştırma</h3>
+        <ResponsiveContainer width="100%" height={280}>
+          <BarChart data={monthlyData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: 'var(--text-muted)' }} />
+            <YAxis tick={{ fontSize: 11, fill: 'var(--text-muted)' }} tickFormatter={v => `${(v/1000).toFixed(0)}K`} />
+            <Tooltip formatter={v => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', fontSize: '13px' }} />
+            <Bar dataKey="income" name="Gelir" fill="#10b981" radius={[4,4,0,0]} />
+            <Bar dataKey="expense" name="Gider" fill="#ef4444" radius={[4,4,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
 
-        {/* Pie + table */}
-        <div className="card p-5">
-          <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Kategori Dağılımı</h3>
-          <ResponsiveContainer width="100%" height={200}>
-            <PieChart>
-              <Pie data={categoryData} cx="50%" cy="50%" outerRadius={80} innerRadius={50} dataKey="total" paddingAngle={2}>
-                {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-              </Pie>
-              <Tooltip formatter={v => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', fontSize: '13px' }} />
-            </PieChart>
-          </ResponsiveContainer>
-          <div className="space-y-2 mt-3">
+      {/* Pie + table */}
+      <div className="card p-5">
+        <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Kategori Dağılımı</h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
+          <div className="h-[240px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie data={categoryData} cx="50%" cy="50%" outerRadius={90} innerRadius={60} dataKey="total" paddingAngle={2}>
+                  {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
+                </Pie>
+                <Tooltip formatter={v => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', fontSize: '13px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+          <div className="space-y-1">
             {categoryData.map((c, i) => (
-              <div key={i} className="flex items-center justify-between text-sm">
+              <div key={i} className="flex items-center justify-between text-sm p-1.5 rounded-lg hover:bg-[var(--bg-secondary)]/50 transition-colors">
                 <div className="flex items-center gap-2">
                   <span className="w-3 h-3 rounded-full" style={{ background: COLORS[i % COLORS.length] }} />
                   <span style={{ color: 'var(--text-secondary)' }}>{c.icon} {c.name}</span>
                 </div>
                 <div className="flex items-center gap-3">
                   <span style={{ color: 'var(--text-muted)' }}>{c.percentage}%</span>
-                  <span className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatMoney(c.total)}</span>
+                  <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{formatMoney(c.total)}</span>
                 </div>
               </div>
             ))}
