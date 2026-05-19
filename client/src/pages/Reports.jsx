@@ -501,6 +501,61 @@ export default function Reports() {
           columnStyles: { 1: { halign: 'right' }, 2: { halign: 'right' } },
         });
 
+        // Add graphs to the monthly report
+        try {
+          const html2canvas = (await import('html2canvas')).default;
+          
+          const captureCard = async (id) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            const canvas = await html2canvas(el, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: null,
+              logging: false
+            });
+            return canvas.toDataURL('image/png');
+          };
+
+          const catImg = await captureCard('chart-monthly-category');
+          const payeeImg = await captureCard('chart-monthly-payee');
+          const catTrendImg = await captureCard('chart-monthly-cat-trend');
+          const payeeTrendImg = await captureCard('chart-monthly-payee-trend');
+
+          if (catImg || payeeImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Aylık Dağılım Grafikleri', 14, 20);
+            
+            if (catImg) {
+              doc.addImage(catImg, 'PNG', 14, 26, 182, 100);
+              if (payeeImg) {
+                doc.addImage(payeeImg, 'PNG', 14, 136, 182, 100);
+              }
+            } else if (payeeImg) {
+              doc.addImage(payeeImg, 'PNG', 14, 26, 182, 100);
+            }
+          }
+
+          if (catTrendImg || payeeTrendImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Yıllık Trend Grafikleri', 14, 20);
+            
+            if (catTrendImg) {
+              doc.addImage(catTrendImg, 'PNG', 14, 26, 182, 100);
+              if (payeeTrendImg) {
+                doc.addImage(payeeTrendImg, 'PNG', 14, 136, 182, 100);
+              }
+            } else if (payeeTrendImg) {
+              doc.addImage(payeeTrendImg, 'PNG', 14, 26, 182, 100);
+            }
+          }
+        } catch (graphErr) {
+          console.error('Error adding monthly graphs to PDF:', graphErr);
+        }
+
         doc.save(`Aylik_Gider_Raporu_${MONTHS[selectedMonth]}_${selectedYear}.pdf`);
 
       } else if (activeTab === 'compare') {
@@ -595,6 +650,43 @@ export default function Reports() {
             }
           },
         });
+
+        // Add graphs to the comparison report
+        try {
+          const html2canvas = (await import('html2canvas')).default;
+          
+          const captureCard = async (id) => {
+            const el = document.getElementById(id);
+            if (!el) return null;
+            const canvas = await html2canvas(el, {
+              scale: 2,
+              useCORS: true,
+              allowTaint: true,
+              backgroundColor: null,
+              logging: false
+            });
+            return canvas.toDataURL('image/png');
+          };
+
+          const compareCatImg = await captureCard('chart-compare-category');
+          const comparePayeeImg = await captureCard('chart-compare-payee');
+
+          if (compareCatImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Kategori Karşılaştırma Grafiği', 14, 20);
+            doc.addImage(compareCatImg, 'PNG', 14, 26, 182, 110);
+          }
+
+          if (comparePayeeImg) {
+            doc.addPage();
+            doc.setFontSize(14);
+            doc.text('Harcama Yeri Karşılaştırma Grafiği', 14, 20);
+            doc.addImage(comparePayeeImg, 'PNG', 14, 26, 182, 110);
+          }
+        } catch (graphErr) {
+          console.error('Error adding comparison graphs to PDF:', graphErr);
+        }
 
         doc.save(`Karsilastirmali_Analiz_${new Date().toISOString().split('T')[0]}.pdf`);
       }
@@ -875,7 +967,7 @@ export default function Reports() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="card p-6">
+          <div id="chart-monthly-category" className="card p-6">
             <h3 className="text-base font-bold mb-6 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-indigo-500" />
               Kategori Dağılımı ({MONTHS[selectedMonth]})
@@ -893,7 +985,7 @@ export default function Reports() {
             </div>
           </div>
 
-          <div className="card p-6">
+          <div id="chart-monthly-payee" className="card p-6">
             <h3 className="text-base font-bold mb-6 flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-red-500" />
               Harcama Yeri Dağılımı ({MONTHS[selectedMonth]})
@@ -933,7 +1025,7 @@ export default function Reports() {
         </div>
 
         {/* Category Trend Section */}
-        <div className="card p-6 border-2 border-indigo-500/10">
+        <div id="chart-monthly-cat-trend" className="card p-6 border-2 border-indigo-500/10">
           <h3 className="text-lg font-black flex items-center gap-2 mb-6">
             <Clock className="text-indigo-500" size={20} />
             Yıllık Kategori Trendi
@@ -978,7 +1070,7 @@ export default function Reports() {
         </div>
 
         {/* Payee Trend Section */}
-        <div className="card p-6 border-2 border-rose-500/10">
+        <div id="chart-monthly-payee-trend" className="card p-6 border-2 border-rose-500/10">
           <h3 className="text-lg font-black flex items-center gap-2 mb-6">
             <Clock className="text-rose-500" size={20} />
             Yıllık Harcama Yeri Trendi
@@ -1149,7 +1241,7 @@ export default function Reports() {
         </div>
 
         {/* Category Comparison Chart */}
-        <div className="card p-6">
+        <div id="chart-compare-category" className="card p-6">
           <h3 className="text-base font-black mb-6 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-indigo-500" />
             Kategori Bazlı Karşılaştırma
@@ -1174,7 +1266,7 @@ export default function Reports() {
         </div>
 
         {/* Payee Comparison Chart */}
-        <div className="card p-6">
+        <div id="chart-compare-payee" className="card p-6">
           <h3 className="text-base font-black mb-6 flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-rose-500" />
             Harcama Yeri Bazlı Karşılaştırma
