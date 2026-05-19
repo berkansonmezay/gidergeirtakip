@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, FileText, FileSpreadsheet } from 'lucide-react';
+import { Plus, Search, Filter, Trash2, Edit3, TrendingUp, TrendingDown, X, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Download, FileText, FileSpreadsheet, Upload } from 'lucide-react';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { utils } from 'xlsx';
@@ -25,6 +25,7 @@ export default function Transactions() {
   const [total, setTotal] = useState(0);
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [selectedYear, setSelectedYear] = useState('Tümü');
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const handleDateRangeClick = (rangeStr) => {
     setActiveDateRange(rangeStr);
@@ -293,6 +294,13 @@ export default function Transactions() {
           </div>
           
           <div className="flex gap-2">
+            <button 
+              onClick={() => setShowImportModal(true)}
+              className="btn bg-indigo-50 text-indigo-600 hover:bg-indigo-100 border border-indigo-200 gap-2"
+              title="Excel İçe Aktar"
+            >
+              <Upload size={18} /> <span className="hidden sm:inline">İçe Aktar</span>
+            </button>
             <button 
               onClick={exportToExcel}
               className="btn bg-green-50 text-green-600 hover:bg-green-100 border border-green-200 gap-2"
@@ -565,6 +573,17 @@ export default function Transactions() {
         />
       )}
 
+      {/* Excel Import Modal */}
+      {showImportModal && (
+        <ExcelImportModal
+          onClose={() => setShowImportModal(false)}
+          onSaved={() => {
+            setShowImportModal(false);
+            fetchTransactions();
+          }}
+        />
+      )}
+
       {/* Delete Confirmation Modal */}
       {deleteConfirmId && createPortal(
         <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setDeleteConfirmId(null)}>
@@ -585,6 +604,155 @@ export default function Transactions() {
         document.body
       )}
     </div>
+  );
+}
+
+function ExcelImportModal({ onClose, onSaved }) {
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [details, setDetails] = useState([]);
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/transactions/template', {
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'gelir_gider_sablonu.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      alert('Şablon indirilirken bir hata oluştu.');
+    }
+  };
+
+  const handleFileChange = (e) => {
+    if (e.target.files && e.target.files[0]) {
+      setFile(e.target.files[0]);
+      setError('');
+      setSuccess('');
+      setDetails([]);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!file) return setError('Lütfen yüklemek için bir dosya seçin.');
+
+    setUploading(true);
+    setError('');
+    setSuccess('');
+    setDetails([]);
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const { data } = await api.post('/transactions/import', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data'
+        }
+      });
+      setSuccess(`${data.count} adet işlem başarıyla içeri aktarıldı!`);
+      setFile(null);
+      setTimeout(() => {
+        onSaved();
+      }, 1500);
+    } catch (err) {
+      const errMsg = err.response?.data?.error || 'Dosya yüklenirken bir hata oluştu.';
+      setError(errMsg);
+      if (err.response?.data?.details) {
+        setDetails(err.response.data.details);
+      }
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return createPortal(
+    <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-content p-6" style={{ maxWidth: '500px' }}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Excel ile Gelir/Gider Ekle</h3>
+          <button onClick={onClose} className="btn-icon btn-ghost"><X size={20} /></button>
+        </div>
+
+        <div className="space-y-5">
+          <div className="p-4 rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)]">
+            <h4 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>1. Güncel Şablonu İndirin</h4>
+            <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+              Sistemdeki güncel kategorileriniz ve harcama yerleriniz Excel şablonuna otomatik olarak açılır liste şeklinde eklenir. Taksitli işlemler için <strong>Taksit Sayısı</strong> sütununu doldurabilirsiniz.
+            </p>
+            <button 
+              type="button" 
+              onClick={handleDownloadTemplate} 
+              className="btn btn-secondary btn-sm flex items-center gap-2"
+            >
+              <Download size={16} /> Şablonu İndir (.xlsx)
+            </button>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="p-4 rounded-xl border border-[var(--border)]">
+              <h4 className="text-sm font-semibold mb-1" style={{ color: 'var(--text-primary)' }}>2. Doldurduğunuz Şablonu Yükleyin</h4>
+              <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>
+                Doldurduğunuz Excel dosyasını seçin ve yükleyin.
+              </p>
+
+              <div className="flex flex-col items-center justify-center border-2 border-dashed border-[var(--border)] rounded-lg p-6 bg-[var(--bg-secondary)] hover:bg-[var(--bg-primary)] transition-all cursor-pointer relative">
+                <input 
+                  type="file" 
+                  accept=".xlsx, .xls" 
+                  onChange={handleFileChange}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                />
+                <Upload size={32} className="text-primary mb-2" />
+                <span className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  {file ? file.name : 'Dosya Seçin veya Sürükleyin'}
+                </span>
+                <span className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Yalnızca .xlsx veya .xls dosyaları
+                </span>
+              </div>
+            </div>
+
+            {error && (
+              <div className="p-3 rounded-xl text-sm" style={{ background: 'var(--expense-light)', color: 'var(--expense)' }}>
+                <span className="font-semibold">{error}</span>
+                {details.length > 0 && (
+                  <ul className="mt-2 text-xs list-disc list-inside max-h-32 overflow-y-auto space-y-1">
+                    {details.map((d, index) => <li key={index}>{d}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3 rounded-xl text-sm" style={{ background: 'var(--income-light)', color: 'var(--income)' }}>
+                {success}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button type="button" onClick={onClose} className="btn btn-secondary flex-1">İptal</button>
+              <button 
+                type="submit" 
+                disabled={uploading || !file} 
+                className="btn btn-primary flex-1"
+              >
+                {uploading ? 'Yükleniyor...' : 'Verileri İçe Aktar'}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 

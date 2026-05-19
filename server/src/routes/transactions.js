@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import exceljs from 'exceljs';
+import multer from 'multer';
+
+const upload = multer({ storage: multer.memoryStorage() });
 
 const router = Router();
 router.use(authenticateToken);
@@ -302,6 +306,410 @@ router.get('/summary', async (req, res) => {
   } catch (err) {
     console.error('Summary error:', err);
     res.status(500).json({ error: 'Özet hesaplanırken hata oluştu.' });
+  }
+});
+
+// GET /api/transactions/template
+router.get('/template', async (req, res) => {
+  try {
+    const catsSnapshot = await db.collection('categories').where('user_id', '==', req.user.id).get();
+    const categories = catsSnapshot.docs.map(doc => doc.data());
+    categories.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const payeesSnapshot = await db.collection('payees').where('user_id', '==', req.user.id).get();
+    const payees = payeesSnapshot.docs.map(doc => doc.data());
+    payees.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+    const workbook = new exceljs.Workbook();
+    workbook.creator = 'Aile Bütçesi';
+    workbook.created = new Date();
+
+    const ws = workbook.addWorksheet('Gelir-Gider Ekleme');
+    const listWs = workbook.addWorksheet('Sistem Verileri');
+    listWs.state = 'hidden';
+
+    const categoryOptions = categories.map(c => `${c.icon || '📁'} ${c.name}`);
+    categoryOptions.forEach((cat, index) => {
+      listWs.getCell(`A${index + 1}`).value = cat;
+    });
+
+    const payeeOptions = payees.map(p => p.name);
+    payeeOptions.forEach((payee, index) => {
+      listWs.getCell(`B${index + 1}`).value = payee;
+    });
+
+    const types = ['Gelir', 'Gider'];
+    types.forEach((type, index) => {
+      listWs.getCell(`C${index + 1}`).value = type;
+    });
+
+    ws.columns = [
+      { header: 'Tarih (GG.AA.YYYY)', key: 'date', width: 22 },
+      { header: 'Tür (Gelir/Gider)', key: 'type', width: 18 },
+      { header: 'Harcama Yeri', key: 'payee', width: 25 },
+      { header: 'Kategori', key: 'category', width: 25 },
+      { header: 'Tutar (₺)', key: 'amount', width: 15 },
+      { header: 'Açıklama', key: 'description', width: 35 },
+      { header: 'Taksit Sayısı (İsteğe Bağlı)', key: 'installmentCount', width: 25 }
+    ];
+
+    const headerRow = ws.getRow(1);
+    headerRow.height = 25;
+    headerRow.eachCell((cell) => {
+      cell.fill = {
+        type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF6366F1' }
+      };
+      cell.font = {
+        name: 'Arial', color: { argb: 'FFFFFFFF' }, bold: true, size: 11
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'left' };
+    });
+
+    const categoryCount = categoryOptions.length;
+    const payeeCount = payeeOptions.length;
+
+    for (let i = 2; i <= 200; i++) {
+      ws.getCell(`A${i}`).numFmt = 'dd.mm.yyyy';
+
+      ws.getCell(`B${i}`).dataValidation = {
+        type: 'list',
+        allowBlank: true,
+        formulae: [`'Sistem Verileri'!$C$1:$C$2`],
+        showErrorMessage: true,
+        errorTitle: 'Geçersiz İşlem Türü',
+        error: 'Lütfen sadece listeden "Gelir" veya "Gider" seçin.'
+      };
+
+      if (payeeCount > 0) {
+        ws.getCell(`C${i}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`'Sistem Verileri'!$B$1:$B$${payeeCount}`],
+          showErrorMessage: true,
+          errorTitle: 'Geçersiz Harcama Yeri',
+          error: 'Lütfen listeden bir harcama yeri seçin.'
+        };
+      }
+
+      if (categoryCount > 0) {
+        ws.getCell(`D${i}`).dataValidation = {
+          type: 'list',
+          allowBlank: true,
+          formulae: [`'Sistem Verileri'!$A$1:$A$${categoryCount}`],
+          showErrorMessage: true,
+          errorTitle: 'Geçersiz Kategori',
+          error: 'Lütfen listeden bir kategori seçin.'
+        };
+      }
+
+      ws.getCell(`E${i}`).dataValidation = {
+        type: 'decimal',
+        operator: 'greaterThan',
+        formulae: ['0'],
+        showErrorMessage: true,
+        errorTitle: 'Geçersiz Tutar',
+        error: 'Tutar 0\'dan büyük bir sayı olmalıdır.'
+      };
+
+      ws.getCell(`G${i}`).dataValidation = {
+        type: 'whole',
+        operator: 'greaterThanOrEqual',
+        formulae: ['1'],
+        allowBlank: true,
+        showErrorMessage: true,
+        errorTitle: 'Geçersiz Taksit Sayısı',
+        error: 'Taksit sayısı boş bırakılabilir veya 1\'den büyük bir tam sayı olmalıdır.'
+      };
+    }
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename="gelir_gider_sablonu.xlsx"');
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    console.error('Template generation error:', err);
+    res.status(500).json({ error: 'Şablon oluşturulurken hata oluştu.' });
+  }
+});
+
+// POST /api/transactions/import
+router.post('/import', upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'Lütfen bir Excel dosyası yükleyin.' });
+    }
+
+    const workbook = new exceljs.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
+
+    const ws = workbook.getWorksheet('Gelir-Gider Ekleme') || workbook.worksheets[0];
+    if (!ws) {
+      return res.status(400).json({ error: 'Geçersiz şablon yapısı.' });
+    }
+
+    const catsSnapshot = await db.collection('categories').where('user_id', '==', req.user.id).get();
+    const categories = catsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const payeesSnapshot = await db.collection('payees').where('user_id', '==', req.user.id).get();
+    const payees = payeesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    const categoryMap = {};
+    categories.forEach(c => {
+      const formattedKey = `${c.icon || '📁'} ${c.name}`.toLowerCase().trim();
+      const standardKey = c.name.toLowerCase().trim();
+      categoryMap[formattedKey] = c;
+      categoryMap[standardKey] = c;
+    });
+
+    const payeeMap = {};
+    payees.forEach(p => {
+      payeeMap[p.name.toLowerCase().trim()] = p;
+    });
+
+    const transactionsToInsert = [];
+    const errors = [];
+    const newPayeesToCreate = new Set();
+
+    ws.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+
+      const dateVal = row.getCell(1).value;
+      const typeVal = row.getCell(2).value;
+      const payeeVal = row.getCell(3).value;
+      const categoryVal = row.getCell(4).value;
+      const amountVal = row.getCell(5).value;
+      const descVal = row.getCell(6).value;
+      const instVal = row.getCell(7).value;
+
+      if (!dateVal && !typeVal && !payeeVal && !categoryVal && !amountVal && !descVal && !instVal) {
+        return;
+      }
+
+      let dateString = '';
+      if (dateVal instanceof Date) {
+        const year = dateVal.getFullYear();
+        const month = String(dateVal.getMonth() + 1).padStart(2, '0');
+        const day = String(dateVal.getDate()).padStart(2, '0');
+        dateString = `${year}-${month}-${day}`;
+      } else if (typeof dateVal === 'string') {
+        const cleaned = dateVal.trim();
+        const match = cleaned.match(/^(\d{1,2})[./-](\d{1,2})[./-](\d{4})$/);
+        if (match) {
+          const day = match[1].padStart(2, '0');
+          const month = match[2].padStart(2, '0');
+          const year = match[3];
+          dateString = `${year}-${month}-${day}`;
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(cleaned)) {
+          dateString = cleaned;
+        } else {
+          const d = new Date(cleaned);
+          if (!isNaN(d.getTime())) {
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            dateString = `${year}-${month}-${day}`;
+          }
+        }
+      }
+
+      if (!dateString) {
+        errors.push(`Satır ${rowNumber}: Geçersiz tarih formatı (Beklenen: GG.AA.YYYY).`);
+        return;
+      }
+
+      let type = '';
+      if (typeof typeVal === 'string') {
+        const cleaned = typeVal.trim().toLowerCase();
+        if (cleaned === 'gelir') type = 'income';
+        if (cleaned === 'gider') type = 'expense';
+      }
+      if (!type) {
+        errors.push(`Satır ${rowNumber}: Geçersiz işlem türü (Beklenen: Gelir / Gider).`);
+        return;
+      }
+
+      let amount = 0;
+      if (typeof amountVal === 'number') {
+        amount = amountVal;
+      } else if (typeof amountVal === 'string') {
+        amount = parseFloat(amountVal.replace(',', '.'));
+      } else if (amountVal && typeof amountVal === 'object' && amountVal.result !== undefined) {
+        amount = Number(amountVal.result);
+      }
+      if (isNaN(amount) || amount <= 0) {
+        errors.push(`Satır ${rowNumber}: Tutar 0'dan büyük bir sayı olmalıdır.`);
+        return;
+      }
+
+      let payeeName = payeeVal ? String(payeeVal).trim() : '';
+      if (payeeName) {
+        newPayeesToCreate.add(payeeName);
+      }
+
+      let categoryId = null;
+      let categoryName = categoryVal ? String(categoryVal).trim() : '';
+      if (categoryName) {
+        const matchedCat = categoryMap[categoryName.toLowerCase()];
+        if (matchedCat) {
+          if (matchedCat.type !== type) {
+            errors.push(`Satır ${rowNumber}: Seçilen kategori ("${categoryName}") işlem türü (${type === 'income' ? 'Gelir' : 'Gider'}) ile uyuşmuyor.`);
+            return;
+          }
+          categoryId = matchedCat.id;
+        } else {
+          errors.push(`Satır ${rowNumber}: Tanımsız kategori ("${categoryName}").`);
+          return;
+        }
+      }
+
+      const description = descVal ? String(descVal).trim() : '';
+
+      let installmentCount = 1;
+      if (instVal !== undefined && instVal !== null) {
+        if (typeof instVal === 'number') {
+          installmentCount = Math.round(instVal);
+        } else if (typeof instVal === 'string' && instVal.trim() !== '') {
+          const parsed = parseInt(instVal.trim(), 10);
+          if (!isNaN(parsed)) {
+            installmentCount = parsed;
+          } else {
+            errors.push(`Satır ${rowNumber}: Taksit sayısı geçerli bir tam sayı olmalıdır.`);
+            return;
+          }
+        } else if (instVal && typeof instVal === 'object' && instVal.result !== undefined) {
+          installmentCount = Math.round(Number(instVal.result));
+        }
+      }
+      if (installmentCount < 1) {
+        errors.push(`Satır ${rowNumber}: Taksit sayısı en az 1 olmalıdır.`);
+        return;
+      }
+
+      transactionsToInsert.push({
+        rowNumber,
+        date: dateString,
+        type,
+        payeeName,
+        category_id: categoryId,
+        amount,
+        description,
+        installmentCount
+      });
+    });
+
+    if (errors.length > 0) {
+      return res.status(400).json({ error: 'Excel dosyasında doğrulama hataları var.', details: errors });
+    }
+
+    if (transactionsToInsert.length === 0) {
+      return res.status(400).json({ error: 'Yüklenecek işlem bulunamadı. Lütfen şablonu doldurun.' });
+    }
+
+    const finalPayeeMap = { ...payeeMap };
+    for (const name of newPayeesToCreate) {
+      const key = name.toLowerCase();
+      if (!finalPayeeMap[key]) {
+        const newPayee = {
+          name,
+          user_id: req.user.id,
+          created_at: new Date().toISOString()
+        };
+        const pDoc = await db.collection('payees').add(newPayee);
+        finalPayeeMap[key] = { id: pDoc.id, ...newPayee };
+      }
+    }
+
+    let batch = db.batch();
+    let batchCount = 0;
+
+    for (const tx of transactionsToInsert) {
+      const payeeId = tx.payeeName ? finalPayeeMap[tx.payeeName.toLowerCase()].id : null;
+
+      if (tx.installmentCount > 1) {
+        const instRef = db.collection('installments').doc();
+        const iid = instRef.id;
+
+        const monthly = Math.ceil((tx.amount / tx.installmentCount) * 100) / 100;
+        const [sYear, sMonth, sDay] = tx.date.split('-');
+        const sy = Number(sYear);
+        const sm = Number(sMonth) - 1;
+        const sdDay = Number(sDay);
+
+        const npd = new Date(Date.UTC(sy, sm, sdDay));
+
+        const newInst = {
+          description: tx.description,
+          total_amount: tx.amount,
+          installment_count: tx.installmentCount,
+          paid_count: 0,
+          monthly_amount: monthly,
+          start_date: tx.date,
+          next_payment_date: npd.toISOString().split('T')[0],
+          category_id: tx.category_id,
+          payee_id: payeeId,
+          user_id: req.user.id,
+          type: tx.type,
+          status: 'active',
+          created_at: new Date().toISOString()
+        };
+
+        batch.set(instRef, newInst);
+        batchCount++;
+
+        for (let i = 1; i <= tx.installmentCount; i++) {
+          const d = new Date(Date.UTC(sy, sm + (i - 1), sdDay));
+          const pRef = db.collection('installment_payments').doc();
+
+          batch.set(pRef, {
+            installment_id: iid,
+            payment_number: i,
+            amount: monthly,
+            due_date: d.toISOString().split('T')[0],
+            is_paid: 0,
+            paid_date: null
+          });
+          batchCount++;
+
+          if (batchCount >= 400) {
+            await batch.commit();
+            batch = db.batch();
+            batchCount = 0;
+          }
+        }
+      } else {
+        const txRef = db.collection('transactions').doc();
+        batch.set(txRef, {
+          amount: tx.amount,
+          description: tx.description,
+          date: tx.date,
+          type: tx.type,
+          category_id: tx.category_id,
+          payee_id: payeeId,
+          user_id: req.user.id,
+          created_at: new Date().toISOString()
+        });
+        batchCount++;
+      }
+
+      if (batchCount >= 400) {
+        await batch.commit();
+        batch = db.batch();
+        batchCount = 0;
+      }
+    }
+
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    res.status(201).json({
+      message: 'İşlemler başarıyla içe aktarıldı.',
+      count: transactionsToInsert.length
+    });
+  } catch (err) {
+    console.error('Import error:', err);
+    res.status(500).json({ error: 'İşlemler aktarılırken bir hata oluştu: ' + err.message });
   }
 });
 
