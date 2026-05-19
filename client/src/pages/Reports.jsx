@@ -259,7 +259,7 @@ export default function Reports() {
         autoTable(doc, {
           startY: 46,
           head: [['Ay', 'Gelir', 'Gider', 'Bakiye']],
-          body: monthlyData.map(d => [d.month, formatMoney(d.income), formatMoney(d.expense), formatMoney(d.balance)]),
+          body: monthlyData.map(d => [`${d.month} - ${d.year}`, formatMoney(d.income), formatMoney(d.expense), formatMoney(d.balance)]),
           foot: [['Toplam', formatMoney(monthlyTotalIncome), formatMoney(monthlyTotalExpense), formatMoney(monthlyTotalBalance)]],
           styles: { font: 'Roboto', fontSize: 9 },
           headStyles: { font: 'Roboto', fontStyle: 'normal', fillColor: [99, 102, 241] },
