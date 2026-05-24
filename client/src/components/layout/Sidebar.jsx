@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, ArrowLeftRight, Tags, CreditCard, BarChart3, PiggyBank, Users, Settings, LogOut, ChevronLeft, ChevronRight, Wallet, MapPin, Calendar, HelpCircle } from 'lucide-react';
+import { LayoutDashboard, ArrowLeftRight, Tags, CreditCard, BarChart3, PiggyBank, Users, Settings, LogOut, ChevronLeft, ChevronRight, Wallet, MapPin, Calendar, HelpCircle, Shield } from 'lucide-react';
 import useAuthStore from '../../store/authStore';
 
 const menuItems = [
@@ -14,6 +14,7 @@ const menuItems = [
   { path: '/events', icon: Calendar, label: 'Etkinlikler' },
   { path: '/reports', icon: BarChart3, label: 'Raporlar' },
   { path: '/savings', icon: PiggyBank, label: 'Tasarruf' },
+  { path: '/warranties', icon: Shield, label: 'Garanti & Fatura' },
   { path: '/settings', icon: Settings, label: 'Ayarlar' },
   { path: '/help', icon: HelpCircle, label: 'Yardım' },
 ];

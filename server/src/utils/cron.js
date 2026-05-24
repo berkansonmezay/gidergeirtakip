@@ -110,4 +110,60 @@ export const initializeCronJobs = () => {
   });
 
   console.log(`🕒 Cron job başlatıldı: Taksit hatırlatıcıları ('${schedule}' zamanlamasıyla)`);
+
+  // Warranty expiry reminder - runs daily at 10:00
+  const warrantySchedule = process.env.CRON_SCHEDULE_WARRANTY_REMINDER || '0 10 * * *';
+  cron.schedule(warrantySchedule, async () => {
+    console.log('⏰ [Cron] Garanti süresi hatırlatıcı kontrolü başlatılıyor...');
+    try {
+      const now = new Date();
+      const thirtyDaysLater = new Date();
+      thirtyDaysLater.setDate(now.getDate() + 30);
+      const thirtyDaysStr = thirtyDaysLater.toISOString().split('T')[0];
+      const todayStr = now.toISOString().split('T')[0];
+
+      const snapshot = await db.collection('warranties')
+        .where('notification_enabled', '==', true)
+        .where('notification_sent', '==', false)
+        .get();
+
+      if (snapshot.empty) {
+        console.log('ℹ️ [Cron] Bildirim bekleyen garanti kaydı bulunamadı.');
+        return;
+      }
+
+      let notifiedCount = 0;
+      for (const docSnap of snapshot.docs) {
+        const warranty = docSnap.data();
+        if (!warranty.warranty_end_date) continue;
+
+        const endDate = warranty.warranty_end_date.split('T')[0];
+        // Check if warranty expires within next 30 days
+        if (endDate >= todayStr && endDate <= thirtyDaysStr) {
+          const daysLeft = Math.ceil((new Date(endDate) - now) / 86400000);
+
+          await db.collection('notifications').add({
+            user_id: warranty.user_id,
+            type: 'warranty_expiry',
+            title: 'Garanti Süresi Uyarısı',
+            message: `"${warranty.product_name}" ürününüzün garanti süresi ${daysLeft} gün sonra (${new Date(endDate).toLocaleDateString('tr-TR')}) sona erecek.`,
+            is_read: 0,
+            created_at: new Date().toISOString()
+          });
+
+          await db.collection('warranties').doc(docSnap.id).update({
+            notification_sent: true
+          });
+
+          notifiedCount++;
+        }
+      }
+
+      console.log(`✅ [Cron] Garanti hatırlatıcı kontrolü tamamlandı. ${notifiedCount} bildirim gönderildi.`);
+    } catch (err) {
+      console.error('❌ [Cron] Garanti hatırlatıcı kontrolü sırasında hata:', err);
+    }
+  });
+
+  console.log(`🕒 Cron job başlatıldı: Garanti hatırlatıcıları ('${warrantySchedule}' zamanlamasıyla)`);
 };
