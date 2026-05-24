@@ -798,10 +798,10 @@ export default function Reports() {
       <div id="chart-category" className="card p-5">
         <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>Kategori Dağılımı</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-          <div className="h-[240px]">
+          <div className="h-[380px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={categoryData} cx="50%" cy="50%" outerRadius={90} innerRadius={60} dataKey="total" paddingAngle={2}>
+                <Pie data={categoryData} cx="50%" cy="50%" outerRadius={155} innerRadius={100} dataKey="total" paddingAngle={2}>
                   {categoryData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
                 </Pie>
                 <Tooltip formatter={v => formatMoney(v)} contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '12px', fontSize: '13px' }} />
@@ -972,10 +972,10 @@ export default function Reports() {
               <div className="w-2 h-2 rounded-full bg-indigo-500" />
               Kategori Dağılımı ({MONTHS[selectedMonth]})
             </h3>
-            <div className="h-[300px]">
+            <div className="h-[380px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={catStats} innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+                  <Pie data={catStats} innerRadius={90} outerRadius={140} paddingAngle={5} dataKey="value">
                     {catStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                   </Pie>
                   <Tooltip formatter={(v) => formatMoney(v)} contentStyle={{ borderRadius: '16px', border: 'none', boxShadow: '0 10px 25px rgba(0,0,0,0.1)', background: 'var(--bg-card)', color: 'var(--text-primary)' }} />
