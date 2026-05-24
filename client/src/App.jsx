@@ -18,6 +18,7 @@ import Help from './pages/Help';
 import Events from './pages/Events';
 import AdminUsers from './pages/AdminUsers';
 import Warranties from './pages/Warranties';
+import Subscriptions from './pages/Subscriptions';
 
 function ProtectedRoute({ children }) {
   const { isAuthenticated } = useAuthStore();
@@ -57,6 +58,7 @@ export default function App() {
           <Route path="reports" element={<Reports />} />
           <Route path="savings" element={<Savings />} />
           <Route path="warranties" element={<Warranties />} />
+          <Route path="subscriptions" element={<Subscriptions />} />
           <Route path="payees" element={<Payees />} />
           <Route path="calendar" element={<Calendar />} />
           <Route path="events" element={<Events />} />

@@ -17,6 +17,7 @@ import goldPricesRoutes from './routes/goldPrices.js';
 import eventRoutes from './routes/events.js';
 import userRoutes from './routes/users.js';
 import warrantyRoutes from './routes/warranties.js';
+import subscriptionRoutes from './routes/subscriptions.js';
 
 dotenv.config();
 
@@ -55,6 +56,7 @@ app.use('/api/gold-prices', goldPricesRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/warranties', warrantyRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
 
 // Error handler
 app.use((err, req, res, next) => {

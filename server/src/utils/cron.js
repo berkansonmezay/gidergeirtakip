@@ -166,4 +166,75 @@ export const initializeCronJobs = () => {
   });
 
   console.log(`🕒 Cron job başlatıldı: Garanti hatırlatıcıları ('${warrantySchedule}' zamanlamasıyla)`);
+
+  // Subscription cancellation reminder - runs daily at 11:00
+  const subSchedule = process.env.CRON_SCHEDULE_SUB_REMINDER || '0 11 * * *';
+  cron.schedule(subSchedule, async () => {
+    console.log('⏰ [Cron] Abonelik iptal hatırlatıcı kontrolü başlatılıyor...');
+    try {
+      const now = new Date();
+      // Look for subscriptions where next_billing_date is exactly 2 days from now
+      const twoDaysLater = new Date();
+      twoDaysLater.setDate(now.getDate() + 2);
+      const targetDateStr = twoDaysLater.toISOString().split('T')[0];
+
+      const snapshot = await db.collection('subscriptions')
+        .where('status', '==', 'active')
+        .where('reminder_enabled', '==', true)
+        .where('next_billing_date', '==', targetDateStr)
+        .get();
+
+      if (snapshot.empty) {
+        console.log('ℹ️ [Cron] Bildirim bekleyen abonelik bulunamadı.');
+        return;
+      }
+
+      let notifiedCount = 0;
+      for (const docSnap of snapshot.docs) {
+        const sub = docSnap.data();
+        
+        await db.collection('notifications').add({
+          user_id: sub.user_id,
+          type: 'subscription_reminder',
+          title: 'Abonelik Ödeme Hatırlatması',
+          message: `"${sub.name}" aboneliğiniz için ${sub.amount} ${sub.currency} tutarındaki ödeme 2 gün sonra (${new Date(sub.next_billing_date).toLocaleDateString('tr-TR')}) gerçekleşecek. Kullanmıyorsanız iptal etmeyi unutmayın.`,
+          is_read: 0,
+          created_at: new Date().toISOString()
+        });
+        notifiedCount++;
+      }
+
+      // Auto-renew subscriptions that have passed their billing date
+      const pastSnapshot = await db.collection('subscriptions')
+        .where('status', '==', 'active')
+        .where('next_billing_date', '<', now.toISOString().split('T')[0])
+        .get();
+        
+      let renewedCount = 0;
+      for (const docSnap of pastSnapshot.docs) {
+        const sub = docSnap.data();
+        const oldDate = new Date(sub.next_billing_date);
+        const newDate = new Date(oldDate);
+        
+        if (sub.billing_cycle === 'yearly') {
+          newDate.setFullYear(newDate.getFullYear() + 1);
+        } else {
+          // monthly default
+          newDate.setMonth(newDate.getMonth() + 1);
+        }
+        
+        await db.collection('subscriptions').doc(docSnap.id).update({
+          next_billing_date: newDate.toISOString().split('T')[0],
+          updated_at: new Date().toISOString()
+        });
+        renewedCount++;
+      }
+
+      console.log(`✅ [Cron] Abonelik hatırlatıcı tamamlandı. ${notifiedCount} bildirim gönderildi, ${renewedCount} abonelik otomatik yenilendi.`);
+    } catch (err) {
+      console.error('❌ [Cron] Abonelik hatırlatıcı kontrolü sırasında hata:', err);
+    }
+  });
+
+  console.log(`🕒 Cron job başlatıldı: Abonelik hatırlatıcıları ('${subSchedule}' zamanlamasıyla)`);
 };
