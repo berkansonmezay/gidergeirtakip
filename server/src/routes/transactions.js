@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { cacheMiddleware, invalidateCacheMiddleware } from '../middleware/cache.js';
 import exceljs from 'exceljs';
 import multer from 'multer';
 
@@ -8,6 +9,8 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const router = Router();
 router.use(authenticateToken);
+router.use(cacheMiddleware(120));
+router.use(invalidateCacheMiddleware);
 
 // Helper to fetch referenced docs
 async function fetchReferences(categoryIds, payeeIds) {

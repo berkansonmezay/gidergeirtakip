@@ -2,9 +2,12 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { cacheMiddleware, invalidateCacheMiddleware } from '../middleware/cache.js';
 
 const router = Router();
 router.use(authenticateToken);
+router.use(cacheMiddleware(120));
+router.use(invalidateCacheMiddleware);
 
 // Middleware to check if user is admin
 const requireAdmin = (req, res, next) => {

@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { db } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { cacheMiddleware, invalidateCacheMiddleware } from '../middleware/cache.js';
 
 const router = Router();
 router.use(authenticateToken);
+router.use(cacheMiddleware(120));
+router.use(invalidateCacheMiddleware);
 
 // GET /api/reports/monthly
 router.get('/monthly', async (req, res) => {

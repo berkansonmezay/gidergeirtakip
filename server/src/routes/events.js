@@ -1,9 +1,12 @@
 import { Router } from 'express';
 import { db, admin } from '../config/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { cacheMiddleware, invalidateCacheMiddleware } from '../middleware/cache.js';
 
 const router = Router();
 router.use(authenticateToken);
+router.use(cacheMiddleware(120));
+router.use(invalidateCacheMiddleware);
 
 // GET /api/events
 router.get('/', async (req, res) => {
